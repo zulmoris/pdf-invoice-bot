@@ -209,23 +209,370 @@ def _center_window(root):
     root.geometry(f"+{x}+{y}")
 
 
-def show_invoice_dialog(invoice, invoice_date, client, qty, default_manager=""):
+# ==========================================
+# ЧТЕНИЕ СПРАВОЧНИКА "Telegram ID"
+# ==========================================
+def get_contacts_list():
+    """
+    Читает вкладку 'Telegram ID' и возвращает имена по типам.
+
+    Возвращает dict:
+      {
+        "менеджеры": ["Гадя", "Виталина", ...],
+        "дизайнеры": ["Татьяна Колочкова", ...],
+        "руководители": ["Дамир", ...],
+        "все": ["Гадя", "Виталина", "Татьяна Колочкова", ...]  # без дубликатов
+      }
+
+    Если прочитать не удалось — возвращает пустые списки.
+    """
+    empty = {"менеджеры": [], "дизайнеры": [], "руководители": [], "все": []}
+
+    try:
+        gc = gspread.service_account(filename="key.json")
+        spreadsheet = gc.open_by_url(SHEET_URL)
+
+        # Ищем вкладку "Telegram ID" по имени
+        try:
+            tg_sheet = spreadsheet.worksheet("Telegram ID")
+        except gspread.exceptions.WorksheetNotFound:
+            logger.warning("Вкладка 'Telegram ID' не найдена")
+            return empty
+
+        data = tg_sheet.get_all_values()
+        if len(data) <= 1:
+            return empty  # только заголовки
+
+        result = {"менеджеры": [], "дизайнеры": [], "руководители": [], "все": []}
+
+        for row in data[1:]:  # пропускаем заголовок
+            if len(row) < 3:
+                continue
+            name = str(row[0]).strip()
+            tg_type = str(row[2]).strip().lower()
+
+            if not name:
+                continue
+
+            if tg_type == "менеджер":
+                result["менеджеры"].append(name)
+            elif tg_type == "дизайнер":
+                result["дизайнеры"].append(name)
+            elif tg_type == "руководитель":
+                result["руководители"].append(name)
+
+            # "все" — без дубликатов
+            if name not in result["все"]:
+                result["все"].append(name)
+
+        logger.info(f"Справочник загружен: {len(result['менеджеры'])} менеджеров, "
+                    f"{len(result['дизайнеры'])} дизайнеров, "
+                    f"{len(result['руководители'])} руководителей")
+        return result
+
+    except Exception as e:
+        logger.error(f"Ошибка чтения справочника: {e}")
+        return empty
+
+
+def add_contact_to_directory(name, contact_type):
+    """
+    Добавляет новое имя во вкладку 'Telegram ID' (без Telegram ID).
+
+    name         — имя для добавления (например "Татьяна Колочкова")
+    contact_type — тип: "менеджер" или "дизайнер"
+
+    Возвращает True при успехе, False при ошибке.
+    """
+    try:
+        gc = gspread.service_account(filename="key.json")
+        spreadsheet = gc.open_by_url(SHEET_URL)
+        tg_sheet = spreadsheet.worksheet("Telegram ID")
+        tg_sheet.append_row([name, "", contact_type])
+        logger.info(f"Добавлен контакт в справочник: {name} ({contact_type})")
+        return True
+    except Exception as e:
+        logger.error(f"Не удалось добавить контакт в справочник: {e}")
+        return False
+
+
+# ==========================================
+# ВИДЖЕТ: АВТОДОПОЛНЕНИЕ (Entry + Listbox)
+# ==========================================
+class AutocompleteEntry:
+    """
+    Поле ввода с настоящим автодополнением (как в Google Search).
+
+    Менеджер начинает печатать "Тат..." → снизу появляется список вариантов.
+    Клик по варианту → подставляется в поле.
+    Стрелки вниз/вверх → выбор в списке. Enter → выбрать.
+
+    Как работает:
+    - Entry: поле ввода
+    - Toplevel + Listbox: всплывающий список (поверх всех окон)
+
+    Использование:
+        entry = AutocompleteEntry(parent, values=["Гадя", "Виталина"])
+        entry.grid(...)
+        ...
+        selected = entry.get()
+    """
+
+    def __init__(self, parent, values=None, width=35, font=("Segoe UI", 9)):
+        import tkinter as tk
+
+        self.parent = parent
+        self.all_values = values or []
+        self._popup = None
+        self._listbox = None
+
+        # Поле ввода
+        self.entry = tk.Entry(parent, width=width, font=font)
+
+        # События:
+        # <KeyRelease> — после нажатия клавиши (фильтрация)
+        # <Down> — стрелка вниз (выбор в списке)
+        # <Up> — стрелка вверх
+        # <Return> — Enter (выбрать или закрыть)
+        # <FocusOut> — клик вне поля (закрыть список)
+        self.entry.bind("<KeyRelease>", self._on_key_release)
+        self.entry.bind("<Down>", self._on_arrow_down)
+        self.entry.bind("<Up>", self._on_arrow_up)
+        self.entry.bind("<Return>", self._on_enter)
+        self.entry.bind("<FocusOut>", self._on_focus_out)
+
+    def _on_key_release(self, event):
+        """Вызывается при каждом нажатии — фильтрует и показывает список."""
+        import tkinter as tk
+
+        # Игнорируем служебные клавиши
+        if event.keysym in ("Up", "Down", "Return", "Escape", "Tab",
+                            "Shift_L", "Shift_R", "Control_L", "Control_R"):
+            return
+
+        typed = self.entry.get().strip().lower()
+
+        # Фильтруем: оставляем те, что содержат введённый текст
+        if typed:
+            filtered = [v for v in self.all_values if typed in v.lower()]
+        else:
+            filtered = self.all_values[:10]  # если пусто — первые 10
+
+        # Показываем список только если есть что показать
+        if len(filtered) == 0:
+            self._hide_popup()
+            return
+
+        # Если всего 1 вариант и он полностью совпал — не показываем список
+        if len(filtered) == 1 and filtered[0].lower() == typed:
+            self._hide_popup()
+            return
+
+        self._show_popup(filtered)
+
+    def _show_popup(self, values):
+        """Показывает всплывающий список под полем ввода."""
+        import tkinter as tk
+
+        # Если список уже открыт — обновляем значения
+        if self._popup and self._listbox:
+            self._listbox.delete(0, tk.END)
+            for v in values:
+                self._listbox.insert(tk.END, v)
+            return
+
+        # Создаём всплывающее окно
+        self._popup = tk.Toplevel(self.parent)
+        self._popup.wm_overrideredirect(True)  # убираем рамку окна
+
+        # Размещаем ПОД полем ввода
+        x = self.entry.winfo_rootx()
+        y = self.entry.winfo_rooty() + self.entry.winfo_height()
+        self._popup.wm_geometry(f"+{x}+{y}")
+
+        # Список вариантов
+        self._listbox = tk.Listbox(
+            self._popup,
+            font=("Segoe UI", 9),
+            selectbackground="#4472C4",
+            selectforeground="white",
+            activestyle="none"
+        )
+        self._listbox.pack()
+
+        # Заполняем список
+        for v in values:
+            self._listbox.insert(tk.END, v)
+
+        # Клик по варианту → выбираем
+        self._listbox.bind("<Button-1>", self._on_listbox_click)
+
+    def _hide_popup(self):
+        """Скрывает всплывающий список."""
+        import tkinter as tk
+        if self._popup:
+            self._popup.destroy()
+            self._popup = None
+            self._listbox = None
+
+    def _on_listbox_click(self, event):
+        """Клик по варианту в списке → подставляем в поле."""
+        import tkinter as tk
+        if self._listbox:
+            selection = self._listbox.curselection()
+            if not selection:
+                # Если кликнули без выделения — берём под курсором
+                index = self._listbox.nearest(event.y)
+            else:
+                index = selection[0]
+
+            value = self._listbox.get(index)
+            self.entry.delete(0, tk.END)
+            self.entry.insert(0, value)
+            self._hide_popup()
+
+    def _on_arrow_down(self, event):
+        """Стрелка вниз — выделить следующий вариант в списке."""
+        import tkinter as tk
+        if self._listbox and self._listbox.size() > 0:
+            current = self._listbox.curselection()
+            if current:
+                next_idx = min(current[0] + 1, self._listbox.size() - 1)
+            else:
+                next_idx = 0
+            self._listbox.selection_clear(0, tk.END)
+            self._listbox.selection_set(next_idx)
+            self._listbox.see(next_idx)
+            return "break"  # предотвращаем перемещение курсора в Entry
+
+    def _on_arrow_up(self, event):
+        """Стрелка вверх — выделить предыдущий вариант."""
+        import tkinter as tk
+        if self._listbox and self._listbox.size() > 0:
+            current = self._listbox.curselection()
+            if current:
+                prev_idx = max(current[0] - 1, 0)
+            else:
+                prev_idx = 0
+            self._listbox.selection_clear(0, tk.END)
+            self._listbox.selection_set(prev_idx)
+            self._listbox.see(prev_idx)
+            return "break"
+
+    def _on_enter(self, event):
+        """Enter — выбираем выделенный вариант."""
+        import tkinter as tk
+        if self._listbox and self._listbox.size() > 0:
+            current = self._listbox.curselection()
+            if current:
+                value = self._listbox.get(current[0])
+                self.entry.delete(0, tk.END)
+                self.entry.insert(0, value)
+                self._hide_popup()
+                return "break"
+
+    def _on_focus_out(self, event):
+        """Клик вне поля — скрываем список (с небольшой задержкой)."""
+        self.parent.after(200, self._hide_popup)
+
+    # ==========================================
+    # Методы совместимости (как у Combobox)
+    # ==========================================
+    def grid(self, **kwargs):
+        """Передаёт grid() во внутренний Entry."""
+        self.entry.grid(**kwargs)
+
+    def get(self):
+        """Возвращает введённое/выбранное значение."""
+        return self.entry.get().strip()
+
+    def set(self, value):
+        """Устанавливает значение."""
+        import tkinter as tk
+        self.entry.delete(0, tk.END)
+        self.entry.insert(0, value)
+
+    def focus_set(self):
+        """Устанавливает фокус."""
+        self.entry.focus_set()
+
+
+def check_and_offer_add(name, contact_type, known_names):
+    """
+    Проверяет, есть ли имя в справочнике. Если нет — предлагает добавить.
+
+    name         — введённое имя (например "Татьяна Колочкова")
+    contact_type — "менеджер" или "дизайнер"
+    known_names  — список известных имён этого типа
+
+    Возвращает: name (возможно уточнённое) или "" если отменили.
+    """
+    import tkinter as tk
+    from tkinter import messagebox
+
+    if not name:
+        return name  # пустое поле — оставляем пустым, это нормально
+
+    # Проверяем точное совпадение (без учёта регистра)
+    name_lower = name.lower().strip()
+    found = False
+    for known in known_names:
+        if known.lower().strip() == name_lower:
+            found = True
+            break
+
+    if found:
+        return name  # всё ок, имя есть в справочнике
+
+    # Имени нет — предлагаем добавить
+    answer = messagebox.askyesno(
+        "Нет в справочнике",
+        f"Имя '{name}' не найдено в справочнике.\n\n"
+        f"Telegram-уведомления по этому имени работать НЕ будут.\n\n"
+        f"Добавить '{name}' в справочник как {contact_type}?",
+        parent=None
+    )
+
+    if answer:
+        # Добавляем в справочник
+        if add_contact_to_directory(name, contact_type):
+            messagebox.showinfo("Добавлено", f"'{name}' добавлен в справочник.\n\n"
+                              f"Теперь нужно, чтобы {name} написал боту /start\n"
+                              f"и прислал свой Telegram ID для привязки.")
+            return name
+        else:
+            messagebox.showerror("Ошибка", "Не удалось добавить в справочник. Проверьте интернет.")
+            return name
+    else:
+        # Не добавлять — продолжаем как есть
+        return name
+
+
+def show_invoice_dialog(invoice, invoice_date, client, qty, default_manager="",
+                       contacts=None):
     """
     ОКОШКО 1: Данные по счёту (один раз на весь счёт).
 
     Показывает данные из PDF + поля Дизайнер, Менеджер и Форма оплаты.
     Эти данные общие для всех поставщиков по этому счёту.
 
+    contacts — dict с именами из справочника (для автодополнения):
+      {"менеджеры": [...], "дизайнеры": [...], "все": [...]}
+
     Возвращает (designer, manager, payment_form) или None при отмене.
     """
     import tkinter as tk
+    from tkinter import messagebox
+
+    if contacts is None:
+        contacts = {"менеджеры": [], "дизайнеры": [], "все": []}
 
     result = {"designer": "", "manager": default_manager, "payment_form": ""}
     dialog_done = False
 
     def on_ok():
-        result["designer"] = entry_designer.get().strip()
-        result["manager"] = entry_manager.get().strip()
+        result["designer"] = combo_designer.get()
+        result["manager"] = combo_manager.get()
         result["payment_form"] = entry_payment.get().strip()
         nonlocal dialog_done
         dialog_done = True
@@ -259,19 +606,19 @@ def show_invoice_dialog(invoice, invoice_date, client, qty, default_manager=""):
     section_input = tk.LabelFrame(root, text="  ✏️ Заполните  ", font=("Segoe UI", 9, "bold"), padx=10, pady=5)
     section_input.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
 
-    # Дизайнер
+    # Дизайнер (с автодополнением из справочника)
     tk.Label(section_input, text="Дизайнер:", font=("Segoe UI", 9)).grid(row=0, column=0, sticky="w", pady=2)
-    entry_designer = tk.Entry(section_input, width=35, font=("Segoe UI", 9))
-    entry_designer.grid(row=0, column=1, sticky="ew", pady=2)
-    entry_designer.focus_set()
+    combo_designer = AutocompleteEntry(section_input, values=contacts.get("дизайнеры", []))
+    combo_designer.grid(row=0, column=1, sticky="ew", pady=2)
+    combo_designer.focus_set()
 
-    # Менеджер
+    # Менеджер (с автодополнением из справочника)
     tk.Label(section_input, text="Менеджер:", font=("Segoe UI", 9)).grid(row=1, column=0, sticky="w", pady=2)
-    entry_manager = tk.Entry(section_input, width=35, font=("Segoe UI", 9))
-    entry_manager.grid(row=1, column=1, sticky="ew", pady=2)
-    entry_manager.insert(0, default_manager)
+    combo_manager = AutocompleteEntry(section_input, values=contacts.get("менеджеры", []))
+    combo_manager.grid(row=1, column=1, sticky="ew", pady=2)
+    combo_manager.set(default_manager)
 
-    # Форма оплаты
+    # Форма оплаты (обычное поле — там фиксированные варианты)
     tk.Label(section_input, text="Форма оплаты:", font=("Segoe UI", 9)).grid(row=2, column=0, sticky="w", pady=2)
     entry_payment = tk.Entry(section_input, width=35, font=("Segoe UI", 9))
     entry_payment.grid(row=2, column=1, sticky="ew", pady=2)
@@ -491,15 +838,27 @@ def process_pdf(filepath):
     logger.info(f"Клиент: {client}, Позиций: {qty_int}")
 
     # ==========================================
-    # ШАГ 4: Окошко 1 — Дизайнер, Менеджер + Форма оплаты
+    # ШАГ 4: Читаем справочник + Окошко 1
     # ==========================================
-    invoice_data = show_invoice_dialog(invoice, invoice_date, client, qty_int)
+    # Загружаем справочник контактов (для автодополнения в диалоге)
+    contacts = get_contacts_list()
+
+    invoice_data = show_invoice_dialog(
+        invoice, invoice_date, client, qty_int,
+        default_manager="",
+        contacts=contacts
+    )
     if invoice_data is None:
         logger.info("Менеджер отменил ввод. Обработка прервана.")
         show_notification("⚠️ Ввод отменён", f"Счёт №{invoice} не добавлен")
         return
 
     designer, manager, payment_form = invoice_data
+
+    # Проверяем имена по справочнику, предлагаем добавить если нет
+    designer = check_and_offer_add(designer, "дизайнер", contacts.get("дизайнеры", []))
+    manager = check_and_offer_add(manager, "менеджер", contacts.get("менеджеры", []))
+
     logger.info(f"Дизайнер: {designer}, Менеджер: {manager}, Оплата: {payment_form}")
 
     # ==========================================
