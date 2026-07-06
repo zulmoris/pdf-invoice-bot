@@ -99,12 +99,6 @@ def process_pdf(filepath):
         os.rename(filepath, new_filepath)
         print(f"[*] Файл переименован в: {os.path.basename(new_filepath)}")
 
-        # 4. Переименовываем файл, чтобы не обрабатывать дважды
-        base, ext = os.path.splitext(filepath)
-        new_filepath = f"{base}_ОБРАБОТАНО{ext}"
-        os.rename(filepath, new_filepath)
-        print(f"[*] Файл переименован в: {os.path.basename(new_filepath)}")
-
     except Exception as e:
         print(f"[!] ОШИБКА при обработке файла: {e}")
 
