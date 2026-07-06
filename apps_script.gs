@@ -137,6 +137,19 @@ function checkAndNotify(sheet, invoice) {
   // ==========================================
   var groups = getRecipientGroups(manager, designer, invoice);
 
+  // ==========================================
+  // ОТПРАВКА УВЕДОМЛЕНИЙ
+  // ==========================================
+  // ⚠️ ВРЕМЕННО: отправляем ТОЛЬКО в рабочий чат (TEST_CHAT_ID)
+  // Менеджеры, дизайнеры, клиенты — отключены для устранения спама.
+  // Логика сохранена, можно вернуть убрав комментарии (//) ниже.
+
+  // Отправляем полное сообщение в рабочий чат
+  sendTelegram(TEST_CHAT_ID, messageFull);
+
+  /*  === ОТКЛЮЧЕНО ДО УСТРАНЕНИЯ СПАМА ===
+  var groups = getRecipientGroups(manager, designer, invoice);
+
   // Группа 1: ПОЛНОЕ сообщение, БЕЗ кнопок
   for (var g1 = 0; g1 < groups.full.length; g1++) {
     sendTelegram(groups.full[g1], messageFull);
@@ -147,14 +160,14 @@ function checkAndNotify(sheet, invoice) {
   for (var g2 = 0; g2 < groups.brief.length; g2++) {
     sendTelegram(groups.brief[g2], messageBrief, keyboard);
   }
+  === КОНЕЦ ОТКЛЮЧЁННОГО БЛОКА ===  */
 
   // Ставим "УВЕДОМЛЕНО" во все строки
   for (var n = 0; n < invoiceRows.length; n++) {
     sheet.getRange(invoiceRows[n] + 1, COL_NOTIFIED).setValue("УВЕДОМЛЕНО");
   }
 
-  Logger.log("Уведомления отправлены для счёта " + invoice +
-             " (полных: " + groups.full.length + ", сокращённых: " + groups.brief.length + ")");
+  Logger.log("Уведомление отправлено в рабочий чат для счёта " + invoice);
 }
 
 // ==========================================

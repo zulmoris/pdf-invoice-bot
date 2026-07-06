@@ -1,15 +1,59 @@
 import pdfplumber
 import gspread
 import os
+import sys
 import json
 import logging
 from datetime import datetime
-# МАГИЯ ПУТЕЙ: Заставляем Питона всегда работать в папке со скриптом
-import sys
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+
+# ==========================================
+# ОПРЕДЕЛЯЕМ ПАПКУ ПРОГРАММЫ И РАБОТАЕМ В НЕЙ
+# ==========================================
+# При запуске .exe (PyInstaller) sys.frozen = True
+# При запуске .py — обычный режим
+if getattr(sys, 'frozen', False):
+    # .exe режим: папка где лежит .exe
+    APP_DIR = os.path.dirname(sys.executable)
+else:
+    # .py режим: папка где лежит скрипт
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+os.chdir(APP_DIR)
+
+
+# ==========================================
+# АВТО-ДОСТАВАНИЕ key.json ИЗ .exe
+# ==========================================
+def extract_key_json():
+    """
+    Если программа запущена как .exe и рядом нет key.json —
+    достаём его из bundled-ресурсов.
+
+    В .py режиме ничего не делает (ключ уже лежит рядом).
+    """
+    key_path = os.path.join(APP_DIR, "key.json")
+
+    # Если ключ уже есть — ничего не делаем
+    if os.path.exists(key_path):
+        return
+
+    # Если .exe режим — пытаемся достать из _MEIPASS (временная папка PyInstaller)
+    if getattr(sys, 'frozen', False):
+        bundled_key = os.path.join(sys._MEIPASS, "key.json")
+        if os.path.exists(bundled_key):
+            try:
+                import shutil
+                shutil.copy2(bundled_key, key_path)
+                print(f"key.json извлечён в: {key_path}")
+            except Exception as e:
+                print(f"Не удалось извлечь key.json: {e}")
+
+
+# Достаём ключ (если нужно)
+extract_key_json()
 
 # ==========================================
 # НАСТРОЙКА ЛОГИРОВАНИЯ
@@ -1044,6 +1088,71 @@ class PdfHandler(FileSystemEventHandler):
 # ==========================================
 # ЗАПУСК ПРОГРАММЫ
 # ==========================================
+def show_welcome_screen():
+    """
+    Приветственное окно при ПЕРВОМ запуске.
+
+    Показывает:
+    - ссылку на Google Таблицу (с кнопкой "Открыть")
+    - ссылку на инструкцию
+    - кнопку "Продолжить" → выбор папки
+
+    Возвращает True если пользователь нажал "Продолжить".
+    """
+    import tkinter as tk
+    import webbrowser
+
+    result = {"continue": False}
+
+    def on_continue():
+        result["continue"] = True
+        root.destroy()
+
+    def open_sheet():
+        webbrowser.open(SHEET_URL)
+
+    def open_instructions():
+        # Ссылка на инструкцию в Google Doc
+        webbrowser.open("https://docs.google.com/document/d/1dkYN-TVIqcA86mI10_yEcQwLTCitzZgHf1o6-9huCik/edit")
+
+    root = tk.Tk()
+    root.title("Добро пожаловать! PDF-бот Аганим")
+    root.attributes("-topmost", True)
+    root.resizable(False, False)
+    root.configure(padx=20, pady=20)
+
+    # Заголовок
+    tk.Label(root, text="🤖 PDF-бот Аганим",
+             font=("Segoe UI", 16, "bold"), fg="#0066CC").pack(pady=(0, 10))
+
+    tk.Label(root, text="Программа для автоматического добавления счетов в таблицу.",
+             font=("Segoe UI", 9), wraplength=400).pack(pady=(0, 20))
+
+    # Полезные ссылки
+    links_frame = tk.LabelFrame(root, text="  📌 Полезные ссылки  ",
+                                  font=("Segoe UI", 9, "bold"), padx=10, pady=10)
+    links_frame.pack(fill="x", pady=(0, 20))
+
+    tk.Button(links_frame, text="📊 Открыть Google Таблицу",
+              font=("Segoe UI", 9), command=open_sheet).pack(fill="x", pady=2)
+
+    tk.Button(links_frame, text="📖 Открыть инструкцию по работе",
+              font=("Segoe UI", 9), command=open_instructions).pack(fill="x", pady=2)
+
+    # Информация
+    tk.Label(root, text="⚠️ Не удаляйте и не перемещайте файл key.json — \nбез него бот не сможет работать!",
+             font=("Segoe UI", 8), fg="red", justify="center").pack(pady=(0, 15))
+
+    # Кнопка продолжить
+    tk.Button(root, text="Продолжить →", width=20, font=("Segoe UI", 10, "bold"),
+              bg="#4CAF50", fg="white", command=on_continue).pack()
+
+    _center_window(root)
+    root.mainloop()
+
+    return result["continue"]
+
+
 def main():
     folder_path = ""
 
@@ -1056,8 +1165,11 @@ def main():
         except Exception as e:
             logger.error(f"Ошибка чтения config.json: {e}")
 
-    # Если пути нет, просим пользователя выбрать папку
+    # Если пути нет — это первый запуск
     if not folder_path or not os.path.exists(folder_path):
+        # Показываем приветственное окно
+        show_welcome_screen()
+
         logger.info("Первый запуск! Выбор папки для счетов...")
         import tkinter as tk
         from tkinter import filedialog
