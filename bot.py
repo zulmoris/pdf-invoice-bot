@@ -47,43 +47,100 @@ logger.addHandler(console_handler)
 # ==========================================
 # WINDOWS-УВЕДОМЛЕНИЯ
 # ==========================================
-# win10toast — это библиотека, которая показывает всплывающие уведомления
-# в правом нижнем углу экрана (как уведомления от Skype, Telegram и т.д.)
+# Используем ДВУХУРОВНЕВУЮ систему уведомлений:
 #
-# УСТАНОВКА: pip install win10toast
+# Уровень 1: PowerShell (всплывающее уведомление Windows)
+#   - Красиво, как уведомления от Telegram
+#   - НЕ работает, если уведомления Windows выключены
 #
-# ЗАЧЕМ: Вместо страшного красного окна менеджер увидит аккуратное
-# уведомление: "⚠️ Ошибка обработки счёта" с кратким описанием.
+# Уровень 2: tkinter (маленькое окошко-пузырь)
+#   - Всегда работает, независимо от настроек Windows
+#   - Показывается как маленькое окошко в углу, исчезает через duration секунд
+#   - Встроено в Python, pip install не нужен
+#
+# ЛОГИКА: Сначала пробуем PowerShell. Если не сработало — показываем tkinter.
 
-try:
-    from win10toast import ToastNotifier
-    toaster = ToastNotifier()
-    TOAST_AVAILABLE = True
-except ImportError:
-    # Если библиотека не установлена — не крашимся, просто уведомления не будут работать
-    TOAST_AVAILABLE = False
-    logger.warning("win10toast не установлен. Уведомления отключены. pip install win10toast")
+
+def _show_tkinter_bubble(title, message, duration=5):
+    """
+    Маленькое окошко-уведомление через tkinter.
+
+    tkinter — встроенная в Python библиотека для создания окон.
+    Здесь мы используем её не для полноценного окна, а для
+    маленького "пузыря" в углу экрана.
+
+    after(duration * 1000, root.destroy) — автоматически
+    закрывает окошко через duration секунд.
+    """
+    import tkinter as tk
+    import threading
+
+    # Запускаем в отдельном потоке, чтобы не блокировать бота
+    def _popup():
+        root = tk.Tk()
+        root.title(title)
+        root.attributes("-topmost", True)  # Поверх всех окон
+        root.resizable(False, False)
+
+        # Заголовок
+        tk.Label(root, text=title, font=("Segoe UI", 10, "bold")).pack(padx=15, pady=(10, 0))
+
+        # Сообщение
+        tk.Label(root, text=message, font=("Segoe UI", 9), wraplength=300, justify="left").pack(padx=15, pady=(5, 10))
+
+        # Автозакрытие через duration секунд
+        root.after(duration * 1000, root.destroy)
+        root.mainloop()
+
+    threading.Thread(target=_popup, daemon=True).start()
 
 
 def show_notification(title, message, duration=5):
     """
-    Показывает всплывающее уведомление в Windows.
+    Показывает уведомление — ВСЕГДА.
 
-    title    — заголовок уведомления (короткий, например "✅ Счёт обработан")
-    message  — текст уведомления (подробности)
-    duration — сколько секунд показывать (по умолчанию 5)
+    Сначала пробует PowerShell (красивое системное уведомление).
+    Затем ВСЕГДА показывает tkinter-окошко как гарантию.
 
-    Функция безопасна: если win10toast не установлен — просто запишет в лог.
+    title    — заголовок (например "✅ Счёт обработан")
+    message  — подробности
+    duration — сколько секунд показывать
     """
-    if TOAST_AVAILABLE:
-        try:
-            toaster.show_toast(title, message, duration=duration, threaded=True)
-            # threaded=True означает, что уведомление показывается в фоне
-            # и программа не ждёт, пока менеджер нажмёт на него
-        except Exception as e:
-            logger.error(f"Не удалось показать уведомление: {e}")
-    else:
-        logger.info(f"[УВЕДОМЛЕНИЕ] {title}: {message}")
+    # PowerShell — как бонус, если уведомления Windows включены
+    try:
+        import subprocess
+        safe_title = title.replace("'", "''")
+        safe_message = message.replace("'", "''")
+
+        ps_script = (
+            f"[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, "
+            f"ContentType = WindowsRuntime] > $null; "
+            f"[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, "
+            f"ContentType = WindowsRuntime] > $null; "
+            f"$template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent("
+            f"[Windows.UI.Notifications.ToastTemplateType]::ToastText02); "
+            f"$textNodes = $template.GetElementsByTagName('text'); "
+            f"$textNodes.Item(0).AppendChild($template.CreateTextNode('{safe_title}')) > $null; "
+            f"$textNodes.Item(1).AppendChild($template.CreateTextNode('{safe_message}')) > $null; "
+            f"$toast = [Windows.UI.Notifications.ToastNotification]::new($template); "
+            f"[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
+            f"'PDF Бот').Show($toast)"
+        )
+
+        subprocess.run(
+            ["powershell", "-Command", ps_script],
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=10
+        )
+    except Exception as e:
+        logger.warning(f"PowerShell уведомление не сработало: {e}")
+
+    # tkinter — ВСЕГДА показываем (гарантия, что менеджер увидит)
+    try:
+        _show_tkinter_bubble(title, message, duration)
+        logger.info(f"[УВЕДОМЛЕНИЕ-tkinter] {title}: {message}")
+    except Exception as e:
+        logger.error(f"Не удалось показать уведомление (ни PowerShell, ни tkinter): {e}")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1phaXa8GZo8W3xnzpdFYPs_cjng2WmvkTxFctkjnGoUU/edit?gid=0#gid=0" 
 
 # Файл, где будет храниться путь к папке
