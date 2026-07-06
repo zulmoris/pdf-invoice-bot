@@ -17,5 +17,17 @@ config.json
 __pycache__/
 *.pyc
 
-# Файл лога, если заведём
-*.log
+# Файл лога
+errors.log
+
+# Временные скрипты для отладки
+_check.py
+_read_sheet.py
+_r.py
+
+# Таблицы Excel (чужие данные, не для GitHub)
+*.xlsx
+
+# Секретный файл с токеном Telegram (если будет)
+secrets.py
+
