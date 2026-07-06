@@ -572,27 +572,28 @@ def process_pdf(filepath):
         for supplier, positions_str in supplier_rows:
             # Порядок столбцов по таблице:
             # A: № счёта, B: Дата, C: Клиент, D: Дизайнер, E: к-во поз.,
-            # F: Позиции ПОСТ, G: Поставщик, H: № счета ПОСТ / дата,
-            # I: Дата опл ПОСТ, J: Дата отгр, K: Отправка в тк,
-            # L: Дата прихода ТК КЗН, M: Дата прихода СКЛАД,
-            # N: Дополнительно, O: Менеджер, P: Форма оплаты
+            # F: Уведомлено, G: Позиции ПОСТ, H: Поставщик, I: № счета ПОСТ / дата,
+            # J: Дата опл ПОСТ, K: Дата отгр, L: Отправка в тк,
+            # M: Дата прихода ТК КЗН, N: Дата прихода СКЛАД,
+            # O: Дополнительно, P: Менеджер, Q: Форма оплаты
             new_row = [
                 invoice,        # A
                 invoice_date,   # B
                 client,         # C
                 designer,       # D
                 qty_int,        # E
-                positions_str,  # F
-                supplier,       # G
-                "",             # H — № счета ПОСТ / дата (логист)
-                "",             # I — Дата опл ПОСТ (логист)
-                "",             # J — Дата отгр (логист)
-                "",             # K — Отправка в тк (логист)
-                "",             # L — Дата прихода ТК КЗН (логист)
-                "",             # M — Дата прихода СКЛАД (логист)
-                "",             # N — Дополнительно (логист)
-                manager,        # O
-                payment_form,   # P
+                "",             # F — Уведомлено (пока пусто)
+                positions_str,  # G
+                supplier,       # H
+                "",             # I — № счета ПОСТ / дата (логист)
+                "",             # J — Дата опл ПОСТ (логист)
+                "",             # K — Дата отгр (логист)
+                "",             # L — Отправка в тк (логист)
+                "",             # M — Дата прихода ТК КЗН (логист)
+                "",             # N — Дата прихода СКЛАД (логист)
+                "",             # O — Дополнительно (логист)
+                manager,        # P
+                payment_form,   # Q
             ]
             worksheet.append_row(new_row)
 
@@ -606,8 +607,8 @@ def process_pdf(filepath):
             last_row = len(all_data)
             first_row = last_row - len(supplier_rows) + 1
 
-            # Столбцы для объединения: A(1), B(2), C(3), D(4), E(5), O(15), P(16)
-            merge_cols = {1: "A", 2: "B", 3: "C", 4: "D", 5: "E", 15: "O", 16: "P"}
+            # Столбцы для объединения: A(1), B(2), C(3), D(4), E(5), P(16), Q(17)
+            merge_cols = {1: "A", 2: "B", 3: "C", 4: "D", 5: "E", 16: "P", 17: "Q"}
 
             for col_num, letter in merge_cols.items():
                 range_str = f"{letter}{first_row}:{letter}{last_row}"
@@ -637,8 +638,8 @@ def process_pdf(filepath):
                 }
             }
 
-            # Применяем ко всем столбцам A-P последней строки
-            worksheet.format(f"A{last_row}:P{last_row}", border_format)
+            # Применяем ко всем столбцам A-Q последней строки
+            worksheet.format(f"A{last_row}:Q{last_row}", border_format)
             logger.info(f"Полоса-разделитель добавлена на строку {last_row}")
         except Exception as e:
             logger.warning(f"Не удалось добавить полосу: {e}")
