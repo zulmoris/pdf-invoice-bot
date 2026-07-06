@@ -141,28 +141,305 @@ def show_notification(title, message, duration=5):
         logger.info(f"[УВЕДОМЛЕНИЕ-tkinter] {title}: {message}")
     except Exception as e:
         logger.error(f"Не удалось показать уведомление (ни PowerShell, ни tkinter): {e}")
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1phaXa8GZo8W3xnzpdFYPs_cjng2WmvkTxFctkjnGoUU/edit?gid=0#gid=0" 
+# ВАША ССЫЛКА НА ТАБЛИЦУ (НОВАЯ — для логистики)
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1QkXocbAJu1a5rcu3XNEfpHnoF_mA5flgehjO6E7VIWM/edit?usp=sharing"
 
 # Файл, где будет храниться путь к папке
 CONFIG_FILE = "config.json"
 
 # ==========================================
-# ЛОГИКА РАБОТЫ С ФАЙЛОМ
+# ИЗВЛЕЧЕНИЕ ДАТЫ ИЗ НАЗВАНИЯ ФАЙЛА
+# ==========================================
+# Словарь для перевода русских месяцев в числа.
+# "мая" → 5, "января" → 1, и т.д.
+MONTHS_RU = {
+    "января": "01", "февраля": "02", "марта": "03", "апреля": "04",
+    "мая": "05", "июня": "06", "июля": "07", "августа": "08",
+    "сентября": "09", "октября": "10", "ноября": "11", "декабря": "12"
+}
+
+
+def extract_invoice_date(filename):
+    """
+    Извлекает дату из названия файла и возвращает в формате ДД.ММ.ГГГГ.
+
+    Пример: "Счет на оплату № 921 от 30 мая 2026 г.pdf"
+    Результат: "30.05.2026"
+
+    Если дату найти не удалось — возвращает пустую строку.
+    """
+    try:
+        # Ищем фразу "от ... г" в названии файла
+        if " от " not in filename:
+            return ""
+
+        start = filename.find(" от ") + 4  # Прыгаем за слово "от "
+        end = filename.find(" г", start)   # Ищем букву "г" (год)
+        if end == -1:
+            end = len(filename) - 4  # обрезаем .pdf, если " г" не нашли
+
+        date_str = filename[start:end].strip()  # "30 мая 2026"
+
+        # Разбиваем на части: ["30", "мая", "2026"]
+        parts = date_str.split()
+        if len(parts) == 3:
+            day = parts[0].zfill(2)  # "30" → "30", "5" → "05" (добавляем ноль)
+            month = MONTHS_RU.get(parts[1].lower(), "")  # "мая" → "05"
+            year = parts[2]
+            if month:
+                return f"{day}.{month}.{year}"
+
+    except Exception as e:
+        logger.warning(f"Не удалось извлечь дату из '{filename}': {e}")
+
+    return ""
+
+
+# ==========================================
+# ДИАЛОГИ ВВОДА (ОКОШКИ ДЛЯ МЕНЕДЖЕРА)
+# ==========================================
+
+def _center_window(root):
+    """Центрирует окно на экране."""
+    root.update_idletasks()
+    w = root.winfo_width()
+    h = root.winfo_height()
+    x = (root.winfo_screenwidth() // 2) - (w // 2)
+    y = (root.winfo_screenheight() // 2) - (h // 2)
+    root.geometry(f"+{x}+{y}")
+
+
+def show_invoice_dialog(invoice, invoice_date, client, qty, default_manager=""):
+    """
+    ОКОШКО 1: Данные по счёту (один раз на весь счёт).
+
+    Показывает данные из PDF + поля Дизайнер, Менеджер и Форма оплаты.
+    Эти данные общие для всех поставщиков по этому счёту.
+
+    Возвращает (designer, manager, payment_form) или None при отмене.
+    """
+    import tkinter as tk
+
+    result = {"designer": "", "manager": default_manager, "payment_form": ""}
+    dialog_done = False
+
+    def on_ok():
+        result["designer"] = entry_designer.get().strip()
+        result["manager"] = entry_manager.get().strip()
+        result["payment_form"] = entry_payment.get().strip()
+        nonlocal dialog_done
+        dialog_done = True
+        root.destroy()
+
+    def on_cancel():
+        nonlocal dialog_done
+        dialog_done = True
+        root.destroy()
+
+    root = tk.Tk()
+    root.title(f"Счёт №{invoice}")
+    root.attributes("-topmost", True)
+    root.resizable(False, False)
+
+    # Данные из PDF (не редактируемые)
+    section_pdf = tk.LabelFrame(root, text="  📄 Данные из счёта  ", font=("Segoe UI", 9, "bold"), padx=10, pady=5)
+    section_pdf.grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 5), sticky="ew")
+
+    pdf_data = [
+        ("Номер счёта:", f"№{invoice}"),
+        ("Дата:", invoice_date if invoice_date else "не распознана"),
+        ("Клиент:", client),
+        ("Позиций:", str(qty)),
+    ]
+    for i, (label, value) in enumerate(pdf_data):
+        tk.Label(section_pdf, text=label, font=("Segoe UI", 9)).grid(row=i, column=0, sticky="w", pady=1)
+        tk.Label(section_pdf, text=value, font=("Segoe UI", 9, "bold"), fg="#0066CC").grid(row=i, column=1, sticky="w", padx=(10, 0), pady=1)
+
+    # Поля ввода
+    section_input = tk.LabelFrame(root, text="  ✏️ Заполните  ", font=("Segoe UI", 9, "bold"), padx=10, pady=5)
+    section_input.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+
+    # Дизайнер
+    tk.Label(section_input, text="Дизайнер:", font=("Segoe UI", 9)).grid(row=0, column=0, sticky="w", pady=2)
+    entry_designer = tk.Entry(section_input, width=35, font=("Segoe UI", 9))
+    entry_designer.grid(row=0, column=1, sticky="ew", pady=2)
+    entry_designer.focus_set()
+
+    # Менеджер
+    tk.Label(section_input, text="Менеджер:", font=("Segoe UI", 9)).grid(row=1, column=0, sticky="w", pady=2)
+    entry_manager = tk.Entry(section_input, width=35, font=("Segoe UI", 9))
+    entry_manager.grid(row=1, column=1, sticky="ew", pady=2)
+    entry_manager.insert(0, default_manager)
+
+    # Форма оплаты
+    tk.Label(section_input, text="Форма оплаты:", font=("Segoe UI", 9)).grid(row=2, column=0, sticky="w", pady=2)
+    entry_payment = tk.Entry(section_input, width=35, font=("Segoe UI", 9))
+    entry_payment.grid(row=2, column=1, sticky="ew", pady=2)
+
+    # Кнопки
+    btn_frame = tk.Frame(root)
+    btn_frame.grid(row=2, column=0, columnspan=2, pady=(5, 10))
+    tk.Button(btn_frame, text="OK", width=12, font=("Segoe UI", 9, "bold"),
+              bg="#4CAF50", fg="white", command=on_ok).pack(side="left", padx=5)
+    tk.Button(btn_frame, text="Отмена", width=12, font=("Segoe UI", 9),
+              command=on_cancel).pack(side="left", padx=5)
+
+    root.bind("<Return>", lambda e: on_ok())
+    root.bind("<Escape>", lambda e: on_cancel())
+    _center_window(root)
+    root.mainloop()
+
+    if not dialog_done or not result["manager"]:
+        return None
+    return result["designer"], result["manager"], result["payment_form"]
+
+
+def show_supplier_dialog(remaining_positions, invoice, supplier_hint=""):
+    """
+    ОКОШКО 2: Поставщик и позиции (показывается циклически).
+
+    remaining_positions — список свободных позиций (напр. [3,5,6,7])
+    invoice — номер счёта (для заголовка)
+    supplier_hint — подставка названия поставщика (если была ошибка ввода)
+
+    Возвращает (supplier, positions_list) или None при отмене.
+      - supplier: строка (напр. "ВИА")
+      - positions_list: список int (напр. [3,5,6])
+      Если позиции введены с ошибкой — возвращает кортеж с строкой ошибки.
+    """
+    import tkinter as tk
+
+    result = {"supplier": supplier_hint, "input_text": ""}
+    dialog_done = False
+    error_msg = ""
+
+    def on_ok():
+        result["input_text"] = entry_positions.get().strip()
+        nonlocal dialog_done
+        dialog_done = True
+        root.destroy()
+
+    def on_cancel():
+        nonlocal dialog_done
+        dialog_done = True
+        root.destroy()
+
+    root = tk.Tk()
+    root.title(f"Счёт №{invoice} — Поставщик")
+    root.attributes("-topmost", True)
+    root.resizable(False, False)
+
+    # Показываем свободные позиции
+    remaining_str = ", ".join(str(p) for p in remaining_positions)
+    tk.Label(root, text=f"Свободные позиции ({len(remaining_positions)}):",
+             font=("Segoe UI", 9, "bold")).pack(padx=15, pady=(10, 0), anchor="w")
+    tk.Label(root, text=remaining_str,
+             font=("Segoe UI", 16, "bold"), fg="#0066CC").pack(padx=15, pady=(0, 10), anchor="w")
+
+    # Поля ввода
+    section = tk.LabelFrame(root, text="  🏭 Поставщик и позиции  ", font=("Segoe UI", 9, "bold"), padx=10, pady=5)
+    section.pack(padx=10, pady=5, fill="x")
+
+    tk.Label(section, text="Формат: 1,2,4 — ВИА", font=("Segoe UI", 8), fg="gray").grid(row=0, column=0, columnspan=2, sticky="w")
+    tk.Label(section, text="Поз. — Поставщик:", font=("Segoe UI", 9)).grid(row=1, column=0, sticky="w", pady=2)
+    entry_positions = tk.Entry(section, width=35, font=("Segoe UI", 9))
+    entry_positions.grid(row=1, column=1, sticky="ew", pady=2)
+
+    # Добавляем отдельное поле для поставщика (если формат с разделителем не сработает)
+    # Но пока используем один формат: "1,2,4 — ВИА"
+    entry_supplier = None  # не используется в текущей схеме
+
+    entry_positions.focus_set()
+
+    # Кнопки
+    btn_frame = tk.Frame(root)
+    btn_frame.pack(pady=(5, 10))
+    tk.Button(btn_frame, text="OK", width=12, font=("Segoe UI", 9, "bold"),
+              bg="#4CAF50", fg="white", command=on_ok).pack(side="left", padx=5)
+    tk.Button(btn_frame, text="Отмена", width=12, font=("Segoe UI", 9),
+              command=on_cancel).pack(side="left", padx=5)
+
+    root.bind("<Return>", lambda e: on_ok())
+    root.bind("<Escape>", lambda e: on_cancel())
+    _center_window(root)
+    root.mainloop()
+
+    if not dialog_done or not result["input_text"]:
+        return None
+
+    # ==========================================
+    # Парсим ввод: "1,2,4 — ВИА" или "1,2,4 - ВИА"
+    # ==========================================
+    input_text = result["input_text"]
+
+    # Пробуем разделить по "—" (длинное тире) или "-" (короткое)
+    parts = None
+    for separator in [" — ", " - ", " —  ", " —\t", " -\t"]:
+        if separator in input_text:
+            parts = input_text.split(separator, 1)
+            break
+
+    if parts is None or len(parts) != 2:
+        # Не смогли разделить — просим переписать
+        return "Формат: позиции — поставщик\nПример: 1,2,4 — ВИА"
+
+    positions_str = parts[0].strip()  # "1,2,4"
+    supplier = parts[1].strip()       # "ВИА"
+
+    # Превращаем "1,2,4" в список чисел [1, 2, 4]
+    try:
+        parsed_positions = []
+        for p in positions_str.split(","):
+            p = p.strip()
+            if not p:
+                continue
+            parsed_positions.append(int(p))
+    except ValueError:
+        return f"Позиции должны быть числами.\nБыло: '{positions_str}'"
+
+    # Проверяем: все ли введённые позиции — свободные
+    for p in parsed_positions:
+        if p not in remaining_positions:
+            remaining_str = ", ".join(str(x) for x in remaining_positions)
+            return f"Позиция {p} уже занята или не существует.\nСвободные: {remaining_str}"
+
+    return supplier, parsed_positions
+
+# ==========================================
+# ЛОГИКА РАБОТЫ С ФАЙЛОМ (НОВЫЙ FLOW)
 # ==========================================
 def process_pdf(filepath):
+    """
+    Обрабатывает PDF-счёт: читает → диалог → распределение позиций → запись.
+
+    Новый flow:
+      1. Извлекаем номер, дата, клиент, кол-во из PDF
+      2. Окошко 1: Менеджер + Форма оплаты (один раз)
+      3. Окошко 2 (цикл): Позиции → Поставщик
+         - Бот показывает свободные позиции
+         - Менеджер вводит "1,2,4 — ВИА"
+         - Бот отмечает позиции как занятые
+         - Если остались свободные — окошко снова
+         - Если все распределены — завершаем
+      4. Запись в Google Sheets (одна строка на поставщика)
+      5. Переименование файла + уведомление
+    """
     logger.info(f"Обнаружен новый файл: {filepath}")
 
     # 1. Извлекаем номер счета ИЗ НАЗВАНИЯ ФАЙЛА
-    # Пример: "Счет на оплату № 921 от 30 мая 2026 г.pdf"
     filename = os.path.basename(filepath)
     invoice = "Неизвестно"
 
     if "№" in filename:
         start = filename.find("№") + 1
         end = filename.find(" от", start)
-        if end == -1: end = len(filename) - 4 # обрезаем .pdf
+        if end == -1: end = len(filename) - 4
         invoice = filename[start:end].strip()
-    logger.info(f"Номер счета из названия: {invoice}")
+
+    # 1b. Извлекаем дату из названия
+    invoice_date = extract_invoice_date(filename)
+
+    logger.info(f"Номер счёта: {invoice}, Дата: {invoice_date}")
 
     # ==========================================
     # ШАГ 2: Читаем PDF
@@ -171,16 +448,17 @@ def process_pdf(filepath):
         with pdfplumber.open(filepath) as pdf:
             text = pdf.pages[0].extract_text()
 
-        # Проверяем, что текст вообще извлёкся (бывает, что PDF-скан без текста)
         if not text:
             raise ValueError("PDF не содержит текста. Возможно, это скан-копия.")
 
+        # Нормализуем текст: ё → е (в разных шрифтах ё может быть как 'ё' так и 'е')
+        text = text.replace("ё", "е").replace("Ё", "Е")
+
     except Exception as e:
-        # ОШИБКА: Не смогли прочитать PDF
         error_msg = f"Не удалось прочитать PDF '{filename}': {e}"
         logger.error(error_msg)
         show_notification("⚠️ Ошибка чтения PDF", error_msg)
-        return  # Прерываем обработку — смысла продолжать нет
+        return
 
     # ==========================================
     # ШАГ 3: Извлекаем данные из текста
@@ -188,7 +466,6 @@ def process_pdf(filepath):
     try:
         start_client = text.find("Покупатель") + len("Покупатель")
         if start_client == len("Покупатель") - 1:
-            # find() возвращает -1 если не нашёл. Значит + len() даст -1 + len =<len
             raise ValueError("В PDF не найдено слово 'Покупатель'. Проверьте формат счёта.")
         end_client = text.find("\n", start_client)
         client = text[start_client:end_client].strip()
@@ -201,14 +478,11 @@ def process_pdf(filepath):
         qty_int = int(qty.strip())
 
     except ValueError as e:
-        # ОШИБКА: Формат PDF отличается от ожидаемого
         error_msg = f"Неправильный формат счёта '{filename}': {e}"
         logger.error(error_msg)
         show_notification("⚠️ Неверный формат счёта", str(e))
         return
-
     except Exception as e:
-        # ОШИБКА: Что-то непредвиденное при извлечении данных
         error_msg = f"Неожиданная ошибка при извлечении данных из '{filename}': {e}"
         logger.error(error_msg)
         show_notification("⚠️ Ошибка обработки", error_msg)
@@ -216,87 +490,183 @@ def process_pdf(filepath):
 
     logger.info(f"Клиент: {client}, Позиций: {qty_int}")
 
-    post_statuses = ["ПОСТ"] * qty_int
-    new_row = [invoice, client, "", "", qty_int, ""] + post_statuses
+    # ==========================================
+    # ШАГ 4: Окошко 1 — Дизайнер, Менеджер + Форма оплаты
+    # ==========================================
+    invoice_data = show_invoice_dialog(invoice, invoice_date, client, qty_int)
+    if invoice_data is None:
+        logger.info("Менеджер отменил ввод. Обработка прервана.")
+        show_notification("⚠️ Ввод отменён", f"Счёт №{invoice} не добавлен")
+        return
+
+    designer, manager, payment_form = invoice_data
+    logger.info(f"Дизайнер: {designer}, Менеджер: {manager}, Оплата: {payment_form}")
 
     # ==========================================
-    # ШАГ 4: Подключаемся к Google Sheets
+    # ШАГ 5: Подключаемся к Google Sheets
     # ==========================================
     try:
         gc = gspread.service_account(filename="key.json")
         spreadsheet = gc.open_by_url(SHEET_URL)
         worksheet = spreadsheet.sheet1
     except FileNotFoundError:
-        # ОШИБКА: Нет файла ключа
         error_msg = "Файл key.json не найден! Проверьте, что он лежит рядом с bot.py"
         logger.critical(error_msg)
         show_notification("🚨 КРИТИЧЕСКАЯ ОШИБКА", error_msg)
         return
     except gspread.exceptions.SpreadsheetNotFound:
-        # ОШИБКА: Нет доступа к таблице
-        error_msg = f"Нет доступа к Google Sheets. Проверьте ссылку и права key.json"
+        error_msg = "Нет доступа к Google Sheets. Проверьте ссылку и права key.json"
         logger.error(error_msg)
         show_notification("⚠️ Нет доступа к таблице", error_msg)
         return
     except Exception as e:
-        # ОШИБКА: Нет интернета или другая проблема подключения
         error_msg = f"Ошибка подключения к Google Sheets: {e}"
         logger.error(error_msg)
         show_notification("⚠️ Нет связи с Google", "Проверьте интернет-подключение")
         return
 
     # ==========================================
-    # ШАГ 5: Записываем в таблицу
+    # ШАГ 6: ЦИКЛ — распределение позиций по поставщикам
+    # ==========================================
+    # remaining — список свободных позиций.
+    # started с [1, 2, 3, ..., qty_int], и убираем по мере ввода.
+    remaining = list(range(1, qty_int + 1))
+    supplier_rows = []  # Accumulate: [(supplier, positions_str), ...]
+    supplier_hint = ""   # Подставка названия поставщика при ошибке
+
+    while remaining:
+        # Показываем окошко: свободные позиции + поле ввода
+        result = show_supplier_dialog(remaining, invoice, supplier_hint)
+
+        if result is None:
+            # Менеджер нажал "Отмена"
+            logger.info("Менеджер отменил распределение позиций.")
+            show_notification("⚠️ Ввод отменён", f"Счёт №{invoice} не добавлен")
+            return
+
+        # Если result — строка, это ошибка ввода
+        if isinstance(result, str):
+            show_notification("⚠️ Ошибка ввода", result, duration=8)
+            # Не обновляем remaining — показываем то же окно снова
+            # supplier_hint сохраняем пустым — ошибка была в формате
+            continue
+
+        # result — кортеж (supplier, positions_list)
+        supplier, positions = result
+        supplier_hint = supplier  # Запоминаем на случай ошибки в следующем вводе
+
+        # Убираем занятые позиции из remaining
+        for p in positions:
+            remaining.remove(p)
+
+        positions_str = ",".join(str(p) for p in positions)
+        supplier_rows.append((supplier, positions_str))
+        supplier_hint = ""  # Сбрасываем подсказку после успешного ввода
+
+        logger.info(f"Поставщик '{supplier}' — поз. {positions_str} (осталось {len(remaining)})")
+
+    # ==========================================
+    # ШАГ 7: Записываем ВСЕ строки в Google Sheets
     # ==========================================
     try:
-        logger.info("Проверяю на дубликаты...")
-        existing_data = worksheet.get_all_values()
-        is_duplicate = False
-        matched_row = None
+        for supplier, positions_str in supplier_rows:
+            # Порядок столбцов по таблице:
+            # A: № счёта, B: Дата, C: Клиент, D: Дизайнер, E: к-во поз.,
+            # F: Позиции ПОСТ, G: Поставщик, H: № счета ПОСТ / дата,
+            # I: Дата опл ПОСТ, J: Дата отгр, K: Отправка в тк,
+            # L: Дата прихода ТК КЗН, M: Дата прихода СКЛАД,
+            # N: Дополнительно, O: Менеджер, P: Форма оплаты
+            new_row = [
+                invoice,        # A
+                invoice_date,   # B
+                client,         # C
+                designer,       # D
+                qty_int,        # E
+                positions_str,  # F
+                supplier,       # G
+                "",             # H — № счета ПОСТ / дата (логист)
+                "",             # I — Дата опл ПОСТ (логист)
+                "",             # J — Дата отгр (логист)
+                "",             # K — Отправка в тк (логист)
+                "",             # L — Дата прихода ТК КЗН (логист)
+                "",             # M — Дата прихода СКЛАД (логист)
+                "",             # N — Дополнительно (логист)
+                manager,        # O
+                payment_form,   # P
+            ]
+            worksheet.append_row(new_row)
 
-        for i, row in enumerate(existing_data[1:], start=2):
-            if len(row) > 4:
-                ex_invoice = str(row[0]).strip()
-                ex_client = str(row[1]).strip()
-                ex_qty = str(row[4]).strip()
+        logger.info(f"Записано {len(supplier_rows)} строк в таблицу")
 
-                if ex_invoice == str(invoice).strip() and ex_client == client.strip() and ex_qty == str(qty_int):
-                    is_duplicate = True
-                    matched_row = i
-                    break
+        # ==========================================
+        # Объединяем одинаковые ячейки (если >1 поставщика)
+        # ==========================================
+        if len(supplier_rows) > 1:
+            all_data = worksheet.get_all_values()
+            last_row = len(all_data)
+            first_row = last_row - len(supplier_rows) + 1
 
-        # ВСЕГДА добавляем новую строку
-        worksheet.append_row(new_row)
-        new_row_num = len(existing_data) + 1 # Вычисляем номер новой строки
+            # Столбцы для объединения: A(1), B(2), C(3), D(4), E(5), O(15), P(16)
+            merge_cols = {1: "A", 2: "B", 3: "C", 4: "D", 5: "E", 15: "O", 16: "P"}
 
-        # Настройка желтого цвета
-        yellow_format = {
-            "backgroundColor": {"red": 1.0, "green": 1.0, "blue": 0.0}
-        }
+            for col_num, letter in merge_cols.items():
+                range_str = f"{letter}{first_row}:{letter}{last_row}"
+                try:
+                    worksheet.merge_cells(range_str)
+                    logger.info(f"Объединены: {range_str}")
+                except Exception as e:
+                    logger.warning(f"Не удалось объединить {range_str}: {e}")
 
-        if is_duplicate:
-            logger.warning(f"ОБНАРУЖЕН ДУБЛИКАТ в строке {matched_row}! Подсвечиваем обе строки.")
-            # Красим старую строку
-            worksheet.format(f"A{matched_row}:Z{matched_row}", yellow_format)
-            # Красим новую строку
-            worksheet.format(f"A{new_row_num}:Z{new_row_num}", yellow_format)
-        else:
-            logger.info(f"Успешно добавлено: Счет {invoice}, Клиент: {client}")
+        # ==========================================
+        # Визуальное оформление: полоса под счётом
+        # ==========================================
+        # Добавляем толстую нижнюю границу на последней строке счёта,
+        # чтобы визуально отделить один заказ от другого.
+        try:
+            all_data = worksheet.get_all_values()
+            last_row = len(all_data)
 
-        # Переименовываем файл, чтобы не обрабатывать дважды
+            # Стиль: толстая сплошная линия снизу, тёмно-синяя (#4472C4)
+            border_format = {
+                "borders": {
+                    "bottom": {
+                        "style": "SOLID",
+                        "width": 2,
+                        "color": {"red": 0.27, "green": 0.45, "blue": 0.77}
+                    }
+                }
+            }
+
+            # Применяем ко всем столбцам A-P последней строки
+            worksheet.format(f"A{last_row}:P{last_row}", border_format)
+            logger.info(f"Полоса-разделитель добавлена на строку {last_row}")
+        except Exception as e:
+            logger.warning(f"Не удалось добавить полосу: {e}")
+
+    except Exception as e:
+        error_msg = f"Ошибка записи в таблицу: {e}"
+        logger.error(error_msg)
+        show_notification("⚠️ Ошибка записи", error_msg)
+        return
+
+    # ==========================================
+    # ШАГ 8: Завершение — переименовать файл
+    # ==========================================
+    try:
         base, ext = os.path.splitext(filepath)
         new_filepath = f"{base}_ОБРАБОТАНО{ext}"
         os.rename(filepath, new_filepath)
         logger.info(f"Файл переименован: {os.path.basename(new_filepath)}")
-
-        # Уведомляем менеджера об успехе!
-        show_notification("✅ Счёт обработан", f"Счёт №{invoice} — {client} ({qty_int} поз.)")
-
     except Exception as e:
-        # ОШИБКА: Что-то пошло не так при записи в таблицу
-        error_msg = f"Ошибка записи в таблицу для '{filename}': {e}"
-        logger.error(error_msg)
-        show_notification("⚠️ Ошибка записи", "Не удалось записать в Google Sheets")
+        logger.error(f"Не удалось переименовать файл: {e}")
+
+    # Уведомление об успехе
+    show_notification(
+        "✅ Счёт обработан",
+        f"Счёт №{invoice} — {client}\nДобавлено {len(supplier_rows)} поставщиков",
+        duration=7
+    )
+
 
 # ==========================================
 # ЛОГИКА СЛУШАТЕЛЯ ПАПКИ (WATCHDOG)
