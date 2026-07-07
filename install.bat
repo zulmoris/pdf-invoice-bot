@@ -1,34 +1,95 @@
 @echo off
 chcp 65001 >nul
-title Установка автозапуска PDF-бота
+title Установка PDF-бота Аганим v1.4
+color 0A
 
-echo ==========================================
-echo   Установка автозапуска PDF-бота Аганим
-echo ==========================================
+echo.
+echo  ╔══════════════════════════════════════════════╗
+echo  ║                                              ║
+echo  ║    🤖 PDF-бот Аганим v1.4                    ║
+echo  ║                                              ║
+echo  ║    Установка программы...                    ║
+echo  ║                                              ║
+echo  ╚══════════════════════════════════════════════╝
 echo.
 
-:: Проверяем, что запущены из папки программы
+:: ==========================================
+:: ШАГ 1: Проверяем, что запущены из папки программы
+:: ==========================================
 if not exist "pdf_bot.exe" (
-    echo [ОШИБКА] Файл pdf_bot.exe не найден!
-    echo Запустите этот файл из папки с программой.
+    echo  ❌ ОШИБКА: Файл pdf_bot.exe не найден!
+    echo.
+    echo  Запустите этот файл из папки с программой.
+    echo.
     pause
     exit /b 1
 )
 
-:: Путь к автозагрузке Windows
+:: ==========================================
+:: ШАГ 2: Папка для установки (в Программах)
+:: ==========================================
+set "INSTALL_DIR=%LOCALAPPDATA%\Programs\PDF-bot-Aganim"
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+set "DESKTOP=%USERPROFILE%\Desktop"
 
-:: Создаём VBS-скрипт для скрытого запуска
+echo  📁 Создаю папку для программы...
+if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+
+:: ==========================================
+:: ШАГ 3: Копируем файлы программы
+:: ==========================================
+echo  📋 Копирую файлы...
+copy /y "pdf_bot.exe" "%INSTALL_DIR%\" >nul 2>&1
+if exist "key.json" copy /y "key.json" "%INSTALL_DIR%\" >nul 2>&1
+
+:: ==========================================
+:: ШАГ 4: Автозапуск при включении ПК
+:: ==========================================
+echo  ⚙️  Настраиваю автозапуск...
 set "VBS_PATH=%STARTUP%\start_pdf_bot.vbs"
 
 echo Set WshShell = CreateObject("WScript.Shell") > "%VBS_PATH%"
-echo WshShell.CurrentDirectory = "%~dp0" >> "%VBS_PATH%"
+echo WshShell.CurrentDirectory = "%INSTALL_DIR%" >> "%VBS_PATH%"
 echo WshShell.Run "pdf_bot.exe", 0, False >> "%VBS_PATH%"
 
+:: ==========================================
+:: ШАГ 5: Ярлык на Рабочем столе
+:: ==========================================
+echo  🔗 Создаю ярлык на Рабочем столе...
+set "SHORTCUT=%DESKTOP%\PDF-бот Аганим.lnk"
+set "VBS_SCRIPT=%TEMP%\create_shortcut.vbs"
+
+echo Set WshShell = CreateObject("WScript.Shell") > "%VBS_SCRIPT%"
+echo Set shortcut = WshShell.CreateShortcut("%SHORTCUT%") >> "%VBS_SCRIPT%"
+echo shortcut.TargetPath = "%INSTALL_DIR%\pdf_bot.exe" >> "%VBS_SCRIPT%"
+echo shortcut.WorkingDirectory = "%INSTALL_DIR%" >> "%VBS_SCRIPT%"
+echo shortcut.Description = "PDF-бот Аганим v1.4" >> "%VBS_SCRIPT%"
+echo shortcut.Save >> "%VBS_SCRIPT%"
+
+cscript //nologo "%VBS_SCRIPT%" >nul 2>&1
+del "%VBS_SCRIPT%" >nul 2>&1
+
+:: ==========================================
+:: ШАГ 6: ЗАВЕРШЕНИЕ
+:: ==========================================
 echo.
-echo ✅ Автозапуск установлен!
-echo.
-echo Программа будет запускаться автоматически
-echo при каждом включении компьютера.
+echo  ╔══════════════════════════════════════════════╗
+echo  ║                                              ║
+echo  ║    ✅ УСТАНОВКА ЗАВЕРШЕНА!                   ║
+echo  ║                                              ║
+echo  ║    Программа установлена в:                  ║
+echo  ║    %INSTALL_DIR%
+echo  ║                                              ║
+echo  ║    • Ярлык создан на Рабочем столе           ║
+echo  ║    • Автозапуск при включении ПК включён     ║
+echo  ║                                              ║
+echo  ║    Программа запустится автоматически        ║
+echo  ║    при следующем включении компьютера.       ║
+echo  ║                                              ║
+echo  ║    Чтобы запустить сейчас — двойной клик     ║
+echo  ║    на ярлык «PDF-бот Аганим» на Рабочем      ║
+echo  ║    столе.                                    ║
+echo  ║                                              ║
+echo  ╚══════════════════════════════════════════════╝
 echo.
 pause

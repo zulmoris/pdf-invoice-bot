@@ -2,7 +2,20 @@
 // НАСТРОЙКИ — ПОМЕНЯЙ НА СВОИ
 // ==========================================
 var BOT_TOKEN = "7690342745:AAEh5i7YihlNwYzmvDPb_rBWom_IZsYnemE";
-var TEST_CHAT_ID = "438544636"; // Тестовый ID (пока шлём сюда)
+
+// TEST_CHAT_ID читается из вкладки "Настройки" (ячейка B1).
+// Так менеджер может менять ID без правки кода.
+function getTestChatId() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var settings = ss.getSheetByName("Настройки");
+    if (!settings) return "438544636"; // fallback на старый ID
+    var id = settings.getRange("B1").getValue();
+    return String(id || "438544636");
+  } catch (e) {
+    return "438544636";
+  }
+}
 
 // Столбцы (номера, не буквы!)
 var COL_INVOICE    = 1;  // A — № счёта
@@ -140,12 +153,12 @@ function checkAndNotify(sheet, invoice) {
   // ==========================================
   // ОТПРАВКА УВЕДОМЛЕНИЙ
   // ==========================================
-  // ⚠️ ВРЕМЕННО: отправляем ТОЛЬКО в рабочий чат (TEST_CHAT_ID)
+  // ⚠️ ВРЕМЕННО: отправляем ТОЛЬКО в рабочий чат
   // Менеджеры, дизайнеры, клиенты — отключены для устранения спама.
   // Логика сохранена, можно вернуть убрав комментарии (//) ниже.
 
   // Отправляем полное сообщение в рабочий чат
-  sendTelegram(TEST_CHAT_ID, messageFull);
+  sendTelegram(getTestChatId(), messageFull);
 
   /*  === ОТКЛЮЧЕНО ДО УСТРАНЕНИЯ СПАМА ===
   var groups = getRecipientGroups(manager, designer, invoice);
@@ -191,7 +204,7 @@ function getRecipientGroups(managerName, designerName, invoice) {
   var brief = [];  // дизайнер, клиент
 
   // 1. Общий чат — всегда в full
-  full.push(TEST_CHAT_ID);
+  full.push(getTestChatId());
 
   // Читаем справочник
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -487,8 +500,8 @@ function handleMessage(message) {
 // УВЕДОМЛЕНИЕ МЕНЕДЖЕРОВ + ОБЩЕГО ЧАТА
 // ==========================================
 function notifyManagers(text) {
-  // Пока шлём в общий чат (TEST_CHAT_ID)
-  sendTelegram(TEST_CHAT_ID, text);
+  // Пока шлём в общий чат
+  sendTelegram(getTestChatId(), text);
 
   // TODO: добавить поиск менеджеров по счёту и отправку им в личку
 }
