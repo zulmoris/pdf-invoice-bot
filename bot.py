@@ -239,6 +239,67 @@ def extract_invoice_date(filename):
     return ""
 
 
+def parse_date_string(date_str):
+    """
+    Разбирает строку даты типа "30 мая 2026" или "07.05.2026" → "30.05.2026".
+    Возвращает "" если не распознано.
+    """
+    date_str = date_str.strip().rstrip("г.").rstrip(".").strip()
+
+    # Вариант 1: "30 мая 2026" (текстовый месяц)
+    parts = date_str.split()
+    if len(parts) == 3:
+        day = parts[0].zfill(2)
+        month = MONTHS_RU.get(parts[1].lower(), "")
+        year = parts[2]
+        if month:
+            return f"{day}.{month}.{year}"
+
+    # Вариант 2: "30.05.2026" или "30-05-2026"
+    import re
+    m = re.match(r"^(\d{1,2})[.\-](\d{1,2})[.\-](\d{4})$", date_str)
+    if m:
+        day, month, year = m.group(1), m.group(2), m.group(3)
+        return f"{day.zfill(2)}.{month.zfill(2)}.{year}"
+
+    return ""
+
+
+def extract_invoice_from_pdf_text(text):
+    """
+    Ищет номер счёта и дату ВНУТРИ текста PDF.
+
+    Ищет строку вида: "Счет на оплату № 49 от 07 мая 2026 г."
+
+    Возвращает (invoice_number, invoice_date) или (None, None) если не найдено.
+    """
+    import re
+
+    invoice_number = None
+    invoice_date = None
+
+    # Ищем "Счет ... № NNN ... от DATE г."
+    # Учитываем что "Счет" может быть в любом регистре
+    # NNN — 1-6 цифр, DATE — число + слово + год ИЛИ цифры с разделителями
+    pattern = re.compile(
+        r"счет[^№]*№\s*(\d{1,6})\s*от\s*([^.]+?)г\.",
+        re.IGNORECASE
+    )
+
+    matches = pattern.findall(text)
+    if matches:
+        # Берём ПЕРВОЕ совпадение (бывает несколько "Счет №" в документе)
+        num_raw, date_raw = matches[0]
+        invoice_number = num_raw.strip()
+
+        # Парсим дату
+        parsed_date = parse_date_string(date_raw)
+        if parsed_date:
+            invoice_date = parsed_date
+
+    return invoice_number, invoice_date
+
+
 # ==========================================
 # ДИАЛОГИ ВВОДА (ОКОШКИ ДЛЯ МЕНЕДЖЕРА)
 # ==========================================
@@ -428,6 +489,7 @@ class AutocompleteEntry:
         # Создаём всплывающее окно
         self._popup = tk.Toplevel(self.parent)
         self._popup.wm_overrideredirect(True)  # убираем рамку окна
+        self._popup.attributes("-topmost", True)  # ПОВЕРХ ВСЕХ ОКОН
 
         # Размещаем ПОД полем ввода
         x = self.entry.winfo_rootx()
@@ -552,7 +614,6 @@ def check_and_offer_add(name, contact_type, known_names):
     Возвращает: name (возможно уточнённое) или "" если отменили.
     """
     import tkinter as tk
-    from tkinter import messagebox
 
     if not name:
         return name  # пустое поле — оставляем пустым, это нормально
@@ -568,28 +629,111 @@ def check_and_offer_add(name, contact_type, known_names):
     if found:
         return name  # всё ок, имя есть в справочнике
 
-    # Имени нет — предлагаем добавить
-    answer = messagebox.askyesno(
+    # Имени нет — предлагаем добавить через кастомное окно (надёжнее messagebox)
+    answer = _custom_askyesno(
         "Нет в справочнике",
         f"Имя '{name}' не найдено в справочнике.\n\n"
         f"Telegram-уведомления по этому имени работать НЕ будут.\n\n"
-        f"Добавить '{name}' в справочник как {contact_type}?",
-        parent=None
+        f"Добавить '{name}' в справочник как {contact_type}?"
     )
 
     if answer:
         # Добавляем в справочник
         if add_contact_to_directory(name, contact_type):
-            messagebox.showinfo("Добавлено", f"'{name}' добавлен в справочник.\n\n"
-                              f"Теперь нужно, чтобы {name} написал боту /start\n"
-                              f"и прислал свой Telegram ID для привязки.")
+            _custom_showinfo("Добавлено",
+                f"'{name}' добавлен в справочник.\n\n"
+                f"Теперь нужно, чтобы {name} написал боту /start\n"
+                f"и прислал свой Telegram ID для привязки.")
             return name
         else:
-            messagebox.showerror("Ошибка", "Не удалось добавить в справочник. Проверьте интернет.")
+            _custom_showinfo("Ошибка",
+                "Не удалось добавить в справочник.\nПроверьте интернет-соединение.")
             return name
     else:
         # Не добавлять — продолжаем как есть
         return name
+
+
+def _custom_askyesno(title, message):
+    """
+    Надёжная замена messagebox.askyesno через Toplevel.
+    Возвращает True (Да) или False (Нет).
+    Не конфликтует с другими окнами tkinter.
+    """
+    import tkinter as tk
+    result = {"answer": False, "done": False}
+
+    def on_yes():
+        result["answer"] = True
+        result["done"] = True
+        root.destroy()
+
+    def on_no():
+        result["answer"] = False
+        result["done"] = True
+        root.destroy()
+
+    root = tk.Tk()
+    root.title(title)
+    root.attributes("-topmost", True)
+    root.resizable(False, False)
+
+    tk.Label(root, text=message, font=("Segoe UI", 9),
+             justify="left", wraplength=380).pack(padx=20, pady=15)
+
+    btn_frame = tk.Frame(root)
+    btn_frame.pack(pady=(0, 15))
+    tk.Button(btn_frame, text="Да", width=10, font=("Segoe UI", 9, "bold"),
+              bg="#4CAF50", fg="white", command=on_yes).pack(side="left", padx=5)
+    tk.Button(btn_frame, text="Нет", width=10, font=("Segoe UI", 9),
+              command=on_no).pack(side="left", padx=5)
+
+    root.bind("<Return>", lambda e: on_yes())
+    root.bind("<Escape>", lambda e: on_no())
+
+    # Центрируем
+    root.update_idletasks()
+    w = root.winfo_width()
+    h = root.winfo_height()
+    x = (root.winfo_screenwidth() // 2) - (w // 2)
+    y = (root.winfo_screenheight() // 2) - (h // 2)
+    root.geometry(f"+{x}+{y}")
+
+    root.mainloop()
+    return result["answer"]
+
+
+def _custom_showinfo(title, message):
+    """
+    Надёжная замена messagebox.showinfo через Toplevel.
+    """
+    import tkinter as tk
+
+    def on_ok():
+        root.destroy()
+
+    root = tk.Tk()
+    root.title(title)
+    root.attributes("-topmost", True)
+    root.resizable(False, False)
+
+    tk.Label(root, text=message, font=("Segoe UI", 9),
+             justify="left", wraplength=380).pack(padx=20, pady=15)
+
+    tk.Button(root, text="OK", width=12, font=("Segoe UI", 9, "bold"),
+              bg="#007aff", fg="white", command=on_ok).pack(pady=(0, 15))
+
+    root.bind("<Return>", lambda e: on_ok())
+    root.bind("<Escape>", lambda e: on_ok())
+
+    root.update_idletasks()
+    w = root.winfo_width()
+    h = root.winfo_height()
+    x = (root.winfo_screenwidth() // 2) - (w // 2)
+    y = (root.winfo_screenheight() // 2) - (h // 2)
+    root.geometry(f"+{x}+{y}")
+
+    root.mainloop()
 
 
 def show_invoice_dialog(invoice, invoice_date, client, qty, default_manager="",
@@ -817,23 +961,10 @@ def process_pdf(filepath):
     """
     logger.info(f"Обнаружен новый файл: {filepath}")
 
-    # 1. Извлекаем номер счета ИЗ НАЗВАНИЯ ФАЙЛА
     filename = os.path.basename(filepath)
-    invoice = "Неизвестно"
-
-    if "№" in filename:
-        start = filename.find("№") + 1
-        end = filename.find(" от", start)
-        if end == -1: end = len(filename) - 4
-        invoice = filename[start:end].strip()
-
-    # 1b. Извлекаем дату из названия
-    invoice_date = extract_invoice_date(filename)
-
-    logger.info(f"Номер счёта: {invoice}, Дата: {invoice_date}")
 
     # ==========================================
-    # ШАГ 2: Читаем PDF
+    # ШАГ 1: Читаем PDF (сначала!)
     # ==========================================
     try:
         with pdfplumber.open(filepath) as pdf:
@@ -842,7 +973,7 @@ def process_pdf(filepath):
         if not text:
             raise ValueError("PDF не содержит текста. Возможно, это скан-копия.")
 
-        # Нормализуем текст: ё → е (в разных шрифтах ё может быть как 'ё' так и 'е')
+        # Нормализуем текст: ё → е
         text = text.replace("ё", "е").replace("Ё", "Е")
 
     except Exception as e:
@@ -850,6 +981,35 @@ def process_pdf(filepath):
         logger.error(error_msg)
         show_notification("⚠️ Ошибка чтения PDF", error_msg)
         return
+
+    # ==========================================
+    # ШАГ 2: Извлекаем номер и дату (PDF приоритет + сверка с названием)
+    # ==========================================
+    # 1) Пытаемся найти номер и дату ВНУТРИ PDF
+    pdf_invoice, pdf_date = extract_invoice_from_pdf_text(text)
+
+    # 2) Пытаемся найти номер и дату в НАЗВАНИИ файла
+    file_invoice = "Неизвестно"
+    if "№" in filename:
+        start = filename.find("№") + 1
+        end = filename.find(" от", start)
+        if end == -1: end = len(filename) - 4
+        file_invoice = filename[start:end].strip()
+    file_date = extract_invoice_date(filename)
+
+    # 3) Выбираем финальные значения:
+    #    Приоритет — PDF (он точнее). Название — fallback.
+    invoice = pdf_invoice if pdf_invoice else file_invoice
+    invoice_date = pdf_date if pdf_date else file_date
+
+    # 4) СВЕРКА: если номер из PDF ≠ номеру из названия — предупреждаем (возможно не тот файл)
+    if (pdf_invoice and file_invoice != "Неизвестно"
+            and pdf_invoice != file_invoice):
+        logger.warning(f"РАСХОЖДЕНИЕ: в PDF №{pdf_invoice}, в названии №{file_invoice}. "
+                       f"Берём из PDF: №{invoice}")
+
+    logger.info(f"Номер счёта: {invoice}, Дата: {invoice_date} "
+                f"(PDF: {pdf_invoice}, файл: {file_invoice})")
 
     # ==========================================
     # ШАГ 3: Извлекаем данные из текста
