@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="description" content="Персональный календарь-планировщик с целями, заметками и статистикой">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Планировщик">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <title>Планировщик</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/calendar.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/stats.css">
+</head>
+<body data-theme="light">
+
+    <!-- Боковая панель (sidebar) -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">📅</div>
+            <span class="sidebar-title">Планировщик</span>
+            <button class="sidebar-close" id="sidebarClose" aria-label="Закрыть меню">✕</button>
+        </div>
+        <nav class="sidebar-nav">
+            <button class="nav-item active" data-view="calendar">
+                <span class="nav-icon">📆</span>
+                <span class="nav-text">Календарь</span>
+            </button>
+            <button class="nav-item" data-view="goals">
+                <span class="nav-icon">🎯</span>
+                <span class="nav-text">Цели</span>
+            </button>
+            <button class="nav-item" data-view="notes">
+                <span class="nav-icon">📓</span>
+                <span class="nav-text">Заметки</span>
+            </button>
+            <button class="nav-item" data-view="stats">
+                <span class="nav-icon">📊</span>
+                <span class="nav-text">Статистика</span>
+            </button>
+            <button class="nav-item" data-view="search">
+                <span class="nav-icon">🔍</span>
+                <span class="nav-text">Поиск</span>
+            </button>
+            <div class="nav-divider"></div>
+            <button class="nav-item" id="btnSync">
+                <span class="nav-icon">☁️</span>
+                <span class="nav-text">Синхронизация</span>
+            </button>
+            <button class="nav-item" id="btnExport">
+                <span class="nav-icon">📤</span>
+                <span class="nav-text">Экспорт</span>
+            </button>
+            <button class="nav-item" id="btnImport">
+                <span class="nav-icon">📥</span>
+                <span class="nav-text">Импорт</span>
+            </button>
+            <input type="file" id="importFile" accept=".json" style="display:none">
+            <button class="nav-item" id="btnToggleTheme">
+                <span class="nav-icon">🌓</span>
+                <span class="nav-text">Тема</span>
+            </button>
+        </nav>
+    </aside>
+
+    <!-- Оверлей для sidebar -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Основной контент -->
+    <div class="app-container">
+        <!-- Хедер -->
+        <header class="app-header">
+            <button class="header-btn" id="menuBtn" aria-label="Меню">☰</button>
+            <h1 class="header-title" id="headerTitle">Календарь</h1>
+            <button class="header-btn" id="todayBtn" aria-label="Сегодня">Сегодня</button>
+        </header>
+
+        <!-- Панель навигации календаря -->
+        <div class="calendar-nav" id="calendarNav">
+            <button class="nav-arrow" id="prevBtn">‹</button>
+            <div class="nav-center">
+                <span class="nav-label" id="navLabel"></span>
+            </div>
+            <button class="nav-arrow" id="nextBtn">›</button>
+            <div class="view-switcher">
+                <button class="view-btn active" data-viewmode="month">Месяц</button>
+                <button class="view-btn" data-viewmode="week">Неделя</button>
+                <button class="view-btn" data-viewmode="day">День</button>
+            </div>
+        </div>
+
+        <!-- Контент страниц -->
+        <main class="app-main" id="appMain">
+
+            <!-- Календарь -->
+            <section id="viewCalendar" class="view active">
+                <div class="calendar-container" id="calendarContainer"></div>
+            </section>
+
+            <!-- Цели -->
+            <section id="viewGoals" class="view">
+                <div class="view-header-row">
+                    <h2>Мои цели</h2>
+                    <button class="btn btn-primary" id="addGoalBtn">+ Новая цель</button>
+                </div>
+                <div class="goals-container" id="goalsContainer"></div>
+            </section>
+
+            <!-- Заметки -->
+            <section id="viewNotes" class="view">
+                <div class="view-header-row">
+                    <h2>Заметки</h2>
+                    <button class="btn btn-primary" id="addNoteBtn">+ Новая заметка</button>
+                </div>
+                <div class="notes-container" id="notesContainer"></div>
+            </section>
+
+            <!-- Статистика -->
+            <section id="viewStats" class="view">
+                <div class="view-header-row">
+                    <h2>Статистика</h2>
+                    <div class="stats-period">
+                        <button class="btn btn-sm active" data-period="week">Неделя</button>
+                        <button class="btn btn-sm" data-period="month">Месяц</button>
+                        <button class="btn btn-sm" data-period="year">Год</button>
+                    </div>
+                </div>
+                <div class="stats-container" id="statsContainer">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="statTotalEvents">0</div>
+                            <div class="stat-label">Событий</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statGoalsDone">0</div>
+                            <div class="stat-label">Целей выполнено</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statGoalsPending">0</div>
+                            <div class="stat-label">Целей в процессе</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statNotesCount">0</div>
+                            <div class="stat-label">Заметок</div>
+                        </div>
+                    </div>
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>События по категориям</h3>
+                            <canvas id="chartCategories"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Активность по дням</h3>
+                            <canvas id="chartActivity"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Цели: статус</h3>
+                            <canvas id="chartGoals"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Поиск -->
+            <section id="viewSearch" class="view">
+                <div class="search-bar">
+                    <input type="text" id="searchInput" class="search-input" placeholder="Поиск событий, заметок, целей...">
+                    <div class="search-filters">
+                        <select id="searchCategory" class="filter-select">
+                            <option value="">Все категории</option>
+                        </select>
+                        <select id="searchPriority" class="filter-select">
+                            <option value="">Все приоритеты</option>
+                            <option value="high">Высокий</option>
+                            <option value="medium">Средний</option>
+                            <option value="low">Низкий</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="search-results" id="searchResults"></div>
+            </section>
+        </main>
+
+        <!-- Нижняя панель (мобилка) -->
+        <nav class="bottom-nav" id="bottomNav">
+            <button class="bottom-nav-item active" data-view="calendar">
+                <span class="bottom-nav-icon">📆</span>
+                <span class="bottom-nav-label">Календарь</span>
+            </button>
+            <button class="bottom-nav-item" data-view="goals">
+                <span class="bottom-nav-icon">🎯</span>
+                <span class="bottom-nav-label">Цели</span>
+            </button>
+            <button class="bottom-nav-item add-event-btn" id="quickAddEvent">
+                <span class="bottom-nav-icon">＋</span>
+            </button>
+            <button class="bottom-nav-item" data-view="notes">
+                <span class="bottom-nav-icon">📓</span>
+                <span class="bottom-nav-label">Заметки</span>
+            </button>
+            <button class="bottom-nav-item" data-view="stats">
+                <span class="bottom-nav-icon">📊</span>
+                <span class="bottom-nav-label">Стат.</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Модалка события -->
+    <div class="modal-overlay" id="eventModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="eventModalTitle">Новое событие</h3>
+                <button class="modal-close" data-close="eventModal">✕</button>
+            </div>
+            <form id="eventForm" class="modal-body">
+                <input type="hidden" id="eventId">
+                <div class="form-group">
+                    <label for="eventTitle">Название *</label>
+                    <input type="text" id="eventTitle" required placeholder="Введите название">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="eventDate">Дата *</label>
+                        <input type="date" id="eventDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="eventEndDate">Дата окончания</label>
+                        <input type="date" id="eventEndDate">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="eventTimeStart">Начало</label>
+                        <input type="time" id="eventTimeStart">
+                    </div>
+                    <div class="form-group">
+                        <label for="eventTimeEnd">Конец</label>
+                        <input type="time" id="eventTimeEnd">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="eventCategory">Категория</label>
+                        <select id="eventCategory">
+                            <option value="work">💼 Работа</option>
+                            <option value="personal">🏠 Личное</option>
+                            <option value="health">❤️ Здоровье</option>
+                            <option value="study">📚 Учёба</option>
+                            <option value="finance">💰 Финансы</option>
+                            <option value="other">📌 Другое</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="eventPriority">Приоритет</label>
+                        <select id="eventPriority">
+                            <option value="low">🟢 Низкий</option>
+                            <option value="medium" selected>🟡 Средний</option>
+                            <option value="high">🔴 Высокий</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="eventRepeat">Повторение</label>
+                    <select id="eventRepeat">
+                        <option value="none">Без повторения</option>
+                        <option value="daily">Каждый день</option>
+                        <option value="weekly">Каждую неделю</option>
+                        <option value="monthly">Каждый месяц</option>
+                        <option value="yearly">Каждый год</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Цвет</label>
+                    <div class="color-picker-row" id="colorPickerRow">
+                        <div class="color-swatch selected" data-color="" title="По категории" style="background:conic-gradient(#ef4444,#f97316,#eab308,#22c55e,#3b82f6,#8b5cf6,#ec4899,#ef4444);border:2px solid var(--text-muted)"></div>
+                        <div class="color-swatch" data-color="#ef4444" style="background:#ef4444" title="Красный"></div>
+                        <div class="color-swatch" data-color="#f97316" style="background:#f97316" title="Оранжевый"></div>
+                        <div class="color-swatch" data-color="#eab308" style="background:#eab308" title="Жёлтый"></div>
+                        <div class="color-swatch" data-color="#22c55e" style="background:#22c55e" title="Зелёный"></div>
+                        <div class="color-swatch" data-color="#3b82f6" style="background:#3b82f6" title="Синий"></div>
+                        <div class="color-swatch" data-color="#8b5cf6" style="background:#8b5cf6" title="Фиолетовый"></div>
+                        <div class="color-swatch" data-color="#ec4899" style="background:#ec4899" title="Розовый"></div>
+                        <div class="color-swatch" data-color="#64748b" style="background:#64748b" title="Серый"></div>
+                        <input type="color" id="eventColorCustom" value="#4f46e5" title="Свой цвет">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="eventReminder">Напоминание</label>
+                    <select id="eventReminder">
+                        <option value="none">Без напоминания</option>
+                        <option value="5">За 5 минут</option>
+                        <option value="15" selected>За 15 минут</option>
+                        <option value="60">За 1 час</option>
+                        <option value="1440">За 1 день</option>
+                    </select>
+                </div>
+                <div class="form-group" id="completedGroup">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="eventCompleted">
+                        <span class="checkbox-custom"></span>
+                        <span>✅ Событие выполнено</span>
+                    </label>
+                    <div class="form-group" id="completedDateGroup" style="display:none;margin-top:8px">
+                        <label for="eventCompletedAt">Дата выполнения</label>
+                        <input type="date" id="eventCompletedAt">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="eventDescription">Описание</label>
+                    <textarea id="eventDescription" rows="3" placeholder="Описание события..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger" id="deleteEventBtn" style="display:none">Удалить</button>
+                    <div class="form-actions-right">
+                        <button type="button" class="btn btn-secondary" data-close="eventModal">Отмена</button>
+                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модалка цели -->
+    <div class="modal-overlay" id="goalModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="goalModalTitle">Новая цель</h3>
+                <button class="modal-close" data-close="goalModal">✕</button>
+            </div>
+            <form id="goalForm" class="modal-body">
+                <input type="hidden" id="goalId">
+                <div class="form-group">
+                    <label for="goalTitle">Название *</label>
+                    <input type="text" id="goalTitle" required placeholder="Название цели">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="goalDeadline">Дедлайн</label>
+                        <input type="date" id="goalDeadline">
+                    </div>
+                    <div class="form-group">
+                        <label for="goalCategory">Категория</label>
+                        <select id="goalCategory">
+                            <option value="work">💼 Работа</option>
+                            <option value="personal">🏠 Личное</option>
+                            <option value="health">❤️ Здоровье</option>
+                            <option value="study">📚 Учёба</option>
+                            <option value="finance">💰 Финансы</option>
+                            <option value="other">📌 Другое</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="goalProgress">Прогресс: <span id="goalProgressValue">0</span>%</label>
+                    <input type="range" id="goalProgress" min="0" max="100" value="0" class="range-input">
+                </div>
+                <div class="form-group">
+                    <label for="goalDescription">Описание</label>
+                    <textarea id="goalDescription" rows="3" placeholder="Опишите цель..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger" id="deleteGoalBtn" style="display:none">Удалить</button>
+                    <div class="form-actions-right">
+                        <button type="button" class="btn btn-secondary" data-close="goalModal">Отмена</button>
+                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модалка заметки -->
+    <div class="modal-overlay" id="noteModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="noteModalTitle">Новая заметка</h3>
+                <button class="modal-close" data-close="noteModal">✕</button>
+            </div>
+            <form id="noteForm" class="modal-body">
+                <input type="hidden" id="noteId">
+                <div class="form-group">
+                    <label for="noteTitle">Заголовок *</label>
+                    <input type="text" id="noteTitle" required placeholder="Заголовок заметки">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="noteDate">Привязать к дате</label>
+                        <input type="date" id="noteDate">
+                    </div>
+                    <div class="form-group">
+                        <label for="noteCategory">Категория</label>
+                        <select id="noteCategory">
+                            <option value="">Без категории</option>
+                            <option value="work">💼 Работа</option>
+                            <option value="personal">🏠 Личное</option>
+                            <option value="health">❤️ Здоровье</option>
+                            <option value="study">📚 Учёба</option>
+                            <option value="finance">💰 Финансы</option>
+                            <option value="other">📌 Другое</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="noteContent">Содержание</label>
+                    <textarea id="noteContent" rows="6" placeholder="Текст заметки..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger" id="deleteNoteBtn" style="display:none">Удалить</button>
+                    <div class="form-actions-right">
+                        <button type="button" class="btn btn-secondary" data-close="noteModal">Отмена</button>
+                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модалка синхронизации -->
+    <div class="modal-overlay" id="syncModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>☁️ Синхронизация</h3>
+                <button class="modal-close" data-close="syncModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="sync-status" id="syncStatus">
+                    <div class="sync-indicator" id="syncIndicator"></div>
+                    <span id="syncStatusText">Не подключено</span>
+                    <span class="sync-last-time" id="syncLastTime"></span>
+                </div>
+                <div class="form-group">
+                    <label for="syncUrl">Web App URL *</label>
+                    <input type="url" id="syncUrl" placeholder="https://script.google.com/macros/s/.../exec">
+                </div>
+                <div class="form-group">
+                    <label for="syncToken">Токен</label>
+                    <input type="text" id="syncToken" placeholder="Токен из Google Таблицы (лист config → A1)">
+                </div>
+                <div class="form-group">
+                    <label>Устройство</label>
+                    <div class="sync-device-info">
+                        <span id="syncDeviceId">—</span>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="btnSyncDisconnect" style="display:none">Отключить</button>
+                    <div class="form-actions-right">
+                        <button type="button" class="btn btn-primary" id="btnSyncConnect">Подключить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast уведомления -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+    <!-- App Scripts -->
+    <script src="js/utils.js"></script>
+    <script src="js/db.js"></script>
+    <script src="js/notifications.js"></script>
+    <script src="js/calendar.js"></script>
+    <script src="js/events.js"></script>
+    <script src="js/goals.js"></script>
+    <script src="js/notes.js"></script>
+    <script src="js/search.js"></script>
+    <script src="js/stats.js"></script>
+    <script src="js/sync.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

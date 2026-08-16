@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Генератор иконок для Планировщика</title>
+    <style>
+        body { font-family: system-ui; display: flex; flex-direction: column; align-items: center; padding: 40px; gap: 20px; background: #f0f0f0; }
+        h1 { color: #4f46e5; }
+        .icon-preview { display: flex; gap: 40px; align-items: flex-end; }
+        .icon-box { text-align: center; }
+        .icon-box img { border: 2px solid #ddd; border-radius: 16px; }
+        .icon-box p { margin-top: 8px; font-weight: 600; }
+        .btn { padding: 12px 24px; background: #4f46e5; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+        .btn:hover { background: #3730a3; }
+        .status { color: #22c55e; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <h1>📅 Генератор иконок Планировщика</h1>
+    <p>Откройте эту страницу → иконки сгенерируются автоматически → нажмите кнопку для скачивания</p>
+    <div class="icon-preview">
+        <div class="icon-box">
+            <canvas id="c192" width="192" height="192"></canvas>
+            <p>192×192</p>
+        </div>
+        <div class="icon-box">
+            <canvas id="c512" width="512" height="512"></canvas>
+            <p>512×512</p>
+        </div>
+    </div>
+    <button class="btn" id="downloadBtn">📥 Скачать обе иконки</button>
+    <p class="status" id="status"></p>
+
+    <script>
+        function drawIcon(canvas) {
+            const ctx = canvas.getContext('2d');
+            const s = canvas.width;
+
+            // Фон с градиентом
+            const grad = ctx.createLinearGradient(0, 0, s, s);
+            grad.addColorStop(0, '#4f46e5');
+            grad.addColorStop(1, '#7c3aed');
+            ctx.fillStyle = grad;
+
+            // Скруглённый прямоугольник
+            const r = s * 0.2;
+            ctx.beginPath();
+            ctx.moveTo(r, 0);
+            ctx.lineTo(s - r, 0);
+            ctx.quadraticCurveTo(s, 0, s, r);
+            ctx.lineTo(s, s - r);
+            ctx.quadraticCurveTo(s, s, s - r, s);
+            ctx.lineTo(r, s);
+            ctx.quadraticCurveTo(0, s, 0, s - r);
+            ctx.lineTo(0, r);
+            ctx.quadraticCurveTo(0, 0, r, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            // Календарь — белый прямоугольник
+            const calX = s * 0.2;
+            const calY = s * 0.18;
+            const calW = s * 0.6;
+            const calH = s * 0.6;
+            const calR = s * 0.04;
+
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.beginPath();
+            ctx.moveTo(calX + calR, calY);
+            ctx.lineTo(calX + calW - calR, calY);
+            ctx.quadraticCurveTo(calX + calW, calY, calX + calW, calY + calR);
+            ctx.lineTo(calX + calW, calY + calH - calR);
+            ctx.quadraticCurveTo(calX + calW, calY + calH, calX + calW - calR, calY + calH);
+            ctx.lineTo(calX + calR, calY + calH);
+            ctx.quadraticCurveTo(calX, calY + calH, calX, calY + calH - calR);
+            ctx.lineTo(calX, calY + calR);
+            ctx.quadraticCurveTo(calX, calY, calX + calR, calY);
+            ctx.closePath();
+            ctx.fill();
+
+            // Заголовок календаря (фиолетовый)
+            const headerH = calH * 0.22;
+            ctx.fillStyle = '#6366f1';
+            ctx.fillRect(calX, calY, calW, headerH);
+
+            // Верхние скругления заголовка
+            ctx.fillStyle = '#6366f1';
+            ctx.beginPath();
+            ctx.moveTo(calX + calR, calY);
+            ctx.lineTo(calX + calW - calR, calY);
+            ctx.quadraticCurveTo(calX + calW, calY, calX + calW, calY + calR);
+            ctx.lineTo(calX + calW, calY + headerH);
+            ctx.lineTo(calX, calY + headerH);
+            ctx.lineTo(calX, calY + calR);
+            ctx.quadraticCurveTo(calX, calY, calX + calR, calY);
+            ctx.closePath();
+            ctx.fill();
+
+            // "Кнопки" наверху календаря (два кружка)
+            ctx.fillStyle = '#4f46e5';
+            const dotR = s * 0.03;
+            ctx.beginPath();
+            ctx.arc(calX + calW * 0.3, calY - dotR * 0.5, dotR, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(calX + calW * 0.7, calY - dotR * 0.5, dotR, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Сетка дней
+            ctx.fillStyle = '#a5b4fc';
+            const gridStart = calY + headerH;
+            const gridH = calH - headerH;
+            const cellW = calW / 7;
+            const cellH = gridH / 4;
+
+            for (let row = 0; row < 4; row++) {
+                for (let col = 0; col < 7; col++) {
+                    const cx = calX + col * cellW + cellW / 2;
+                    const cy = gridStart + row * cellH + cellH * 0.45;
+                    const dotSize = s * 0.018;
+
+                    // Подсветить центральный день
+                    if (row === 1 && col === 3) {
+                        ctx.fillStyle = '#4f46e5';
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, dotSize * 1.5, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else {
+                        ctx.fillStyle = '#a5b4fc';
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, dotSize, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            // Галочка (чекмарк) внизу справа
+            const checkSize = s * 0.16;
+            const checkX = s * 0.72;
+            const checkY = s * 0.78;
+
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath();
+            ctx.arc(checkX, checkY, checkSize, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = s * 0.035;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(checkX - checkSize * 0.4, checkY);
+            ctx.lineTo(checkX - checkSize * 0.05, checkY + checkSize * 0.35);
+            ctx.lineTo(checkX + checkSize * 0.45, checkY - checkSize * 0.3);
+            ctx.stroke();
+        }
+
+        function download(canvas, filename) {
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // Рисуем
+        const c192 = document.getElementById('c192');
+        const c512 = document.getElementById('c512');
+        drawIcon(c192);
+        drawIcon(c512);
+
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            download(c192, 'icon-192.png');
+            setTimeout(() => download(c512, 'icon-512.png'), 300);
+            document.getElementById('status').textContent = '✅ Иконки скачаны! Переместите их в папку planner/icons/';
+        });
+    </script>
+</body>
+</html>
