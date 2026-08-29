@@ -6,7 +6,7 @@ color 0B
 echo.
 echo  +==============================================+
 echo  I                                              I
-echo  I    Obnovlenie PDF-bota Aganim v2.0           I
+echo  I    Obnovlenie PDF-bota Aganim v3.0 (Win11)   I
 echo  I                                              I
 echo  +==============================================+
 echo.
@@ -38,10 +38,11 @@ echo     %INSTALL_DIR%
 echo.
 
 :: ==========================================
-:: Ostanavlivaem zapushchennuyu programmu
+:: Ostanavlivaem zapushchennye programmy (bot + dashboard)
 :: ==========================================
 echo  [1/4] Ostanavlivayu programmu...
 taskkill /f /im pdf_bot.exe >nul 2>&1
+taskkill /f /im dashboard.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
 
 :: ==========================================
@@ -56,6 +57,9 @@ ren "%INSTALL_DIR%\pdf_bot.exe" "pdf_bot.exe.bak" >nul 2>&1
 :: ==========================================
 echo  [3/4] Kopiruyu novuyu versiyu...
 copy /y "pdf_bot.exe" "%INSTALL_DIR%\" >nul 2>&1
+if exist "dashboard_v30.py" copy /y "dashboard_v30.py" "%INSTALL_DIR%\" >nul 2>&1
+if exist "dashboard.exe" copy /y "dashboard.exe" "%INSTALL_DIR%\" >nul 2>&1
+if exist "key.json" copy /y "key.json" "%INSTALL_DIR%\" >nul 2>&1
 
 :: Proveryaem chto skopirovalos
 if not exist "%INSTALL_DIR%\pdf_bot.exe" (
@@ -81,7 +85,7 @@ echo  +==============================================+
 echo  I                                              I
 echo  I    [OK] OBNOVLENIE ZAVERSHENO!              I
 echo  I                                              I
-echo  I    Programma uspeshno obnovlena do v2.0      I
+echo  I    Programma uspeshno obnovlena do v3.0      I
 echo  I    i zapushchena.                            I
 echo  I                                              I
 echo  I    Nastroyki i klyuchi sohraneny.            I

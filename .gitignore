@@ -31,3 +31,24 @@ _r.py
 # Секретный файл с токеном Telegram (если будет)
 secrets.py
 
+# Артефакты сборки (не коммитить — AGENTS.md)
+build/
+dist/
+install_build/
+__pycache__/
+
+# Папки дистрибутивов версий и архивы
+PDF-бот Аганим v*/
+PDF-бот Аганим v*.zip
+
+# Служебные папки инструментов
+.zcode/
+.mimosa/
+gui-test-screenshots/
+
+# Временные файлы отладки
+_pf_*.txt
+_pylint_*.txt
+_*.py
+!_update_version.ps1
+
