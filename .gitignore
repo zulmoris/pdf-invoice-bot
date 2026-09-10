@@ -56,3 +56,6 @@ _pylint_*.txt
 _*.py
 !_update_version.ps1
 
+# PNG-рендеры слайдов презентации (генерируются _export_png.ps1)
+_pres_png/
+
