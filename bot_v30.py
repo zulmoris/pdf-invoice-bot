@@ -292,16 +292,19 @@ def show_notification(title, message, duration=5):
 # ==========================================
 # ССЫЛКА НА ТАБЛИЦУ
 # ==========================================
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1QkXocbAJu1a5rcu3XNEfpHnoF_mA5flgehjO6E7VIWM/edit?usp=sharing"
+import deployment as _deployment
+
+# В тестовой сборке (dev) вшита таблица владельца; в релизной
+# (для сторонних компаний) пусто — первый запуск требует свою
+# ссылку (мастер первичной настройки).
+SHEET_URL = _deployment.DEFAULT_SHEET_URL
+DEFAULT_SHEET_URL = _deployment.DEFAULT_SHEET_URL
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")  # настройки развёртывания (URL таблицы)
 
-# Встроенный URL таблицы (текущее развёртывание). На новом объекте
-# мастер первичной настройки заменит его своим значением в settings.json.
-DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/1QkXocbAJu1a5rcu3XNEfpHnoF_mA5flgehjO6E7VIWM/edit?usp=sharing"
+# Telegram-уведомления шлёт Google Apps Script, встроенный в таблицу;
+# токен бота задаётся в apps_script.gs (строка BOT_TOKEN).
 
-# Telegram-бот для уведомлений дизайнерам об оплате счетов
-BOT_TOKEN = "7690342745:AAEh5i7YihlNwYzmvDPb_rBWom_IZsYnemE"
 THRESHOLD_MONTHLY = 500000   # порог за месяц для ставки 10%
 
 # ==========================================
@@ -1876,16 +1879,24 @@ def run_setup_wizard():
 
     btns = ctk.CTkFrame(body, fg_color="transparent")
     btns.pack(fill="x", pady=(18, 0))
-    btns.columnconfigure((0, 1), weight=1, uniform="s")
-    ctk.CTkButton(btns, text="Встроенные настройки", height=38,
-                  fg_color=t["card"], border_width=1, border_color=t["border"],
-                  text_color=t["fg"], hover_color=t["card_hover"],
-                  font=ctk.CTkFont(family="Segoe UI", size=12),
-                  command=on_skip).grid(row=0, column=0, sticky="ew", padx=(0, 4))
-    ctk.CTkButton(btns, text="Сохранить", height=38,
-                  fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color="#ffffff",
-                  font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-                  command=on_save).grid(row=0, column=1, sticky="ew", padx=(4, 0))
+    if DEFAULT_SHEET_URL:
+        # Тестовая сборка: можно оставить таблицу владельца
+        btns.columnconfigure((0, 1), weight=1, uniform="s")
+        ctk.CTkButton(btns, text="Встроенные настройки", height=38,
+                      fg_color=t["card"], border_width=1, border_color=t["border"],
+                      text_color=t["fg"], hover_color=t["card_hover"],
+                      font=ctk.CTkFont(family="Segoe UI", size=12),
+                      command=on_skip).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        ctk.CTkButton(btns, text="Сохранить", height=38,
+                      fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color="#ffffff",
+                      font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                      command=on_save).grid(row=0, column=1, sticky="ew", padx=(4, 0))
+    else:
+        # Релизная сборка: таблицу объекта обязаны указать
+        ctk.CTkButton(btns, text="Сохранить", height=38,
+                      fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color="#ffffff",
+                      font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                      command=on_save).pack(fill="x")
 
     root.bind("<Escape>", lambda e: on_skip())
     sw = root.winfo_screenwidth()
@@ -1897,13 +1908,24 @@ def run_setup_wizard():
 
 def apply_deployment_settings():
     """Настраивает SHEET_URL из settings.json; при первом запуске — мастер.
-    Файловую логику выполняет модуль deployment (pathlib, проверка границ)."""
+    Возвращает True если можно работать; False — таблица не задана
+    (релизная сборка, мастер закрыли без ввода URL)."""
     global SHEET_URL
+    global APP_VERSION
     import deployment
+
+    if deployment.IS_DEV_BUILD and "(тест)" not in APP_VERSION:
+        APP_VERSION = APP_VERSION + " (тест)"
 
     if not deployment.is_configured():
         url = run_setup_wizard()
         chosen = url if url else deployment.DEFAULT_SHEET_URL
+        if not chosen:
+            logger.warning("Настройка не завершена: таблица не указана")
+            show_notification("Настройка не завершена",
+                              "Без ссылки на таблицу бот работать не будет.\n"
+                              "Запустите программу ещё раз и укажите таблицу.")
+            return False
         if deployment.save_sheet_url(chosen):
             logger.info("Настройки развёртывания сохранены"
                         + ("" if url else " (встроенная таблица)"))
@@ -1914,6 +1936,7 @@ def apply_deployment_settings():
     sheet_url = deployment.load_sheet_url()
     if sheet_url:
         SHEET_URL = sheet_url
+    return True
 
 
 # ==========================================
@@ -1921,7 +1944,9 @@ def apply_deployment_settings():
 # ==========================================
 def main():
     # Первичная настройка (новая таблица объекта) — до всего остального
-    apply_deployment_settings()
+    if not apply_deployment_settings():
+        logger.info("Программа закрыта: таблица не настроена.")
+        return
 
     import deployment as _dep
     folder_path = str(_dep.load_config().get("folder_path", ""))

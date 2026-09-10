@@ -7,10 +7,34 @@ settings.json лежит в %APPDATA%/PDF-bot-Aganim/. Путь resolves чер�
 Используется ботом и дашбордом.
 """
 import os
+import sys
 import json
 from pathlib import Path
 
-DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/1QkXocbAJu1a5rcu3XNEfpHnoF_mA5flgehjO6E7VIWM/edit?usp=sharing"
+# Таблица владельца — вшивается ТОЛЬКО в тестовую сборку (dev).
+# В релизной сборке (для сторонних компаний) встроенного URL нет:
+# первый запуск требует ввести ссылку на таблицу объекта (мастер).
+_OWNER_SHEET_URL = "https://docs.google.com/spreadsheets/d/1QkXocbAJu1a5rcu3XNEfpHnoF_mA5flgehjO6E7VIWM/edit?usp=sharing"
+
+
+def _detect_flavor() -> str:
+    """'dev' (тестовая сборка владельца) или 'release' (для клиентов).
+
+    Запуск из исходников = dev (разработчик тестирует на своей таблице).
+    В exe сборщик кладёт маркер _build_flavor.json; если его нет —
+    считаем release (безопасный вариант по умолчанию)."""
+    if not getattr(sys, "frozen", False):
+        return "dev"
+    try:
+        p = os.path.join(sys._MEIPASS, "_build_flavor.json")
+        with open(p, encoding="utf-8") as f:
+            return str(json.load(f).get("flavor", "release")).lower()
+    except Exception:
+        return "release"
+
+
+IS_DEV_BUILD = _detect_flavor() == "dev"
+DEFAULT_SHEET_URL = _OWNER_SHEET_URL if IS_DEV_BUILD else ""
 
 _APPDATA = Path(os.environ.get("APPDATA") or Path.home()).resolve()
 _DIR = (_APPDATA / "PDF-bot-Aganim").resolve()

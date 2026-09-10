@@ -15,6 +15,19 @@ echo.
 :: ==========================================
 :: Versiya
 :: ==========================================
+:: Kompilyator Inno Setup: isshem vo vsekh standartnyh mestah
+set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=C:\Program Files\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" (
+    echo  [!] Inno Setup 6 ne nayden - ustanovite ego i povtorite.
+    pause
+    exit /b 1
+)
+
+:: Reliznaya sborka (dlya klientov): bez vstroennoj tablitsy i bez key.json
+set "PDFBOT_FLAVOR=release"
+
 set "VERSION=%~1"
 if "%VERSION%"=="" (
     set /p "VERSION=Vvedite versiyu (naprimer 3.2): "
@@ -68,11 +81,11 @@ echo       OK
 :: ==========================================
 echo  [4/6] Sobirayu setup.exe...
 if not exist install_build mkdir install_build
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=%VERSION% /Q setup.iss >nul 2>&1
+"%ISCC%" /DMyAppVersion=%VERSION% /Q setup.iss >nul 2>&1
 if not exist "install_build\PDF-bot-Aganim-setup-v%VERSION%.exe" (
     echo  [!] Oshibka: setup.exe ne sobran
     echo      Podrobnee:
-    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=%VERSION% setup.iss
+    "%ISCC%" /DMyAppVersion=%VERSION% setup.iss
     pause
     exit /b 1
 )
@@ -82,7 +95,7 @@ echo       OK
 :: 5. Sobiraem update.exe (Inno Setup)
 :: ==========================================
 echo  [5/6] Sobirayu update.exe...
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=%VERSION% /Q update.iss >nul 2>&1
+"%ISCC%" /DMyAppVersion=%VERSION% /Q update.iss >nul 2>&1
 if not exist "install_build\PDF-bot-Aganim-update-v%VERSION%.exe" (
     echo  [!] Oshibka: update.exe ne sobran
     pause
@@ -94,13 +107,13 @@ echo       OK
 :: 6. Sobiraem papku distributiva
 :: ==========================================
 echo  [6/6] Sobirayu papku distributiva...
-set "DIST=PDF-бот Аганим v%VERSION%"
+set "DIST=PDF-Р±РѕС‚ РђРіР°РЅРёРј v%VERSION%"
 if exist "%DIST%" rmdir /s /q "%DIST%"
 mkdir "%DIST%"
 
 copy /y "install_build\PDF-bot-Aganim-setup-v%VERSION%.exe" "%DIST%\" >nul
 copy /y "install_build\PDF-bot-Aganim-update-v%VERSION%.exe" "%DIST%\" >nul
-copy /y "uninstall_old.bat" "%DIST%\" >nul
+if exist "uninstall_old.bat" copy /y "uninstall_old.bat" "%DIST%\" >nul
 copy /y "apps_script.gs" "%DIST%\" >nul
 
 echo       OK
@@ -125,3 +138,4 @@ echo  +==============================================+
 echo.
 echo  Nazhmite lyubuyu klavishu dlya vyhoda...
 pause >nul
+

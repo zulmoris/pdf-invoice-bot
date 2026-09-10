@@ -34,12 +34,16 @@ secrets.py
 # Артефакты сборки (не коммитить — AGENTS.md)
 build/
 dist/
+dist-test/
 install_build/
 __pycache__/
 
 # Папки дистрибутивов версий и архивы
 PDF-бот Аганим v*/
 PDF-бот Аганим v*.zip
+
+# Бэкап исходников (внутри key.json — НЕЛЬЗЯ на GitHub!)
+ИСХОДНИКИ-*.zip
 
 # Служебные папки инструментов
 .zcode/

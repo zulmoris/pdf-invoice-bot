@@ -47,7 +47,7 @@ Name: "autostart"; Description: "Запускать бот при включен
 Source: "dist\pdf_bot.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\dashboard.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dashboard_v30.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "key.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "key.json"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "apps_script.gs"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

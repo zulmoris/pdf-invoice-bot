@@ -64,15 +64,17 @@ COL_LABELS = {
     COL_PAYMENT: "Форма оплаты",
 }
 
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1QkXocbAJu1a5rcu3XNEfpHnoF_mA5flgehjO6E7VIWM/edit"
-
 # Настройки развёртывания (новая таблица объекта).
 # settings.json создаёт бот при первом запуске (мастер); дашборд
 # при самостоятельном запуске тоже может показать мастер.
 import os as _os_mod
 import json as _json_mod
+import deployment as _deployment_mod
 
-DEFAULT_SHEET_URL = SHEET_URL
+# В тестовой сборке (dev) вшита таблица владельца; в релизной — пусто
+# (таблицу настраивает бот при первом запуске, см. main()).
+SHEET_URL = _deployment_mod.DEFAULT_SHEET_URL
+DEFAULT_SHEET_URL = _deployment_mod.DEFAULT_SHEET_URL
 
 
 def _deployment_settings_path():
@@ -100,6 +102,9 @@ def apply_deployment_settings():
     """Подменяет глобальную SHEET_URL на URL из settings.json (если задан).
     Вызывается из main() и __init__ DashboardWindow."""
     global SHEET_URL
+    global DASH_VERSION
+    if _deployment_mod.IS_DEV_BUILD and "(тест)" not in DASH_VERSION:
+        DASH_VERSION = DASH_VERSION + " (тест)"
     url = load_deployment_settings()
     if url and "docs.google.com" in url:
         SHEET_URL = url
@@ -3220,6 +3225,15 @@ def main():
 
     # Настройки развёртывания (URL таблицы объекта)
     apply_deployment_settings()
+    if not SHEET_URL:
+        from tkinter import messagebox
+        messagebox.showerror(
+            "PDF-бот Аганим",
+            "Таблица не настроена.\n\n"
+            "Запустите «PDF-бот Аганим» (pdf_bot.exe) и пройдите "
+            "первичную настройку — вставьте ссылку на вашу таблицу.\n"
+            "После этого дашборд откроется.")
+        return
 
     ctk.set_appearance_mode("system")
     ctk.set_default_color_theme("blue")
