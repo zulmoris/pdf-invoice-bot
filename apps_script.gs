@@ -6,7 +6,18 @@
 // ==========================================
 // НАСТРОЙКИ — ПОМЕНЯЙ НА СВОИ
 // ==========================================
-var BOT_TOKEN = "7690342745:AAEh5i7YihlNwYzmvDPb_rBWom_IZsYnemE";
+// ВАЖНО: Не храните токен в коде! Используйте PropertiesService:
+// 1. В редакторе Apps Script: Project Settings → Script Properties
+// 2. Добавьте свойство BOT_TOKEN со значением вашего токена
+// 3. Раскомментируйте функцию getBotToken() ниже и закомментируйте переменную BOT_TOKEN
+var BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE";
+
+// Функция для получения токена из PropertiesService (раскомментировать после настройки)
+/*
+function getBotToken() {
+  return PropertiesService.getScriptProperties().getProperty('BOT_TOKEN');
+}
+*/
 
 // TEST_CHAT_ID читается из вкладки "Настройки" (ячейка B1).
 function getTestChatId() {
@@ -412,7 +423,8 @@ function buildInlineKeyboard(invoice) {
 // ОТПРАВКА В TELEGRAM
 // ==========================================
 function sendTelegram(chatId, text, keyboard) {
-  var url = "https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage";
+  var token = (typeof getBotToken === 'function') ? getBotToken() : BOT_TOKEN;
+  var url = "https://api.telegram.org/bot" + token + "/sendMessage";
   var payload = {chat_id: chatId, text: text};
   if (keyboard) payload.reply_markup = keyboard;
 
@@ -768,7 +780,8 @@ function notifyManagers(text, invoice) {
 // ПОДТВЕРЖДЕНИЕ НАЖАТИЯ КНОПКИ
 // ==========================================
 function answerCallback(callbackId) {
-  var url = "https://api.telegram.org/bot" + BOT_TOKEN + "/answerCallbackQuery";
+  var token = (typeof getBotToken === 'function') ? getBotToken() : BOT_TOKEN;
+  var url = "https://api.telegram.org/bot" + token + "/answerCallbackQuery";
   var options = {
     method: "post",
     contentType: "application/json",
