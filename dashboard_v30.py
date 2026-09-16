@@ -38,7 +38,7 @@ TOTAL_COLS = 17
 
 ACCENT = "#FF6B35"
 ACCENT_HOVER = "#FF8A5C"
-DASH_VERSION = "3.5"
+DASH_VERSION = "3.6"
 
 # Telegram-бот (для уведомлений когда все позиции счёта пришли)
 BOT_TOKEN = "7690342745:AAEh5i7YihlNwYzmvDPb_rBWom_IZsYnemE"

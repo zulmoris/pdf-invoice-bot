@@ -8,7 +8,7 @@ import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-APP_VERSION = "3.5"
+APP_VERSION = "3.6"
 
 # ==========================================
 # ОПРЕДЕЛЯЕМ ПАПКИ ПРОГРАММЫ

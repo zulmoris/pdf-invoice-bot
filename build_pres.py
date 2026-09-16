@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Презентация «PDF-бот Аганим v3.5» в стиле macOS (python-pptx)
+# Презентация «PDF-бот Аганим v3.6» в стиле macOS (python-pptx)
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
@@ -691,7 +691,7 @@ for i, (num, lab) in enumerate(stats3):
     text(s, x, 5.1, 2.9, 0.55, lab, size=12.5, color=MUTED, align=PP_ALIGN.CENTER,
          leading=1.1)
 chip(s, W/2 - 1.35, 6.0, 2.7, 0.44, "Живое демо — по запросу", ACCENT, WHITE, 13)
-text(s, 0, H - 0.55, W, 0.3, "Аганим · 2026 · v3.5", size=11, color=MUTED,
+text(s, 0, H - 0.55, W, 0.3, "Аганим · 2026 · v3.6", size=11, color=MUTED,
      align=PP_ALIGN.CENTER)
 
 prs.save("PDF-бот Аганим — презентация.pptx")
